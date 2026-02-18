@@ -6,7 +6,7 @@
  */
 
 const REGEN_LCD_URL =
-  process.env.REGEN_LCD_URL || "https://regen.api.m.stavr.tech";
+  process.env.REGEN_LCD_URL || "https://lcd-regen.keplr.app";
 
 export interface CreditClass {
   id: string;

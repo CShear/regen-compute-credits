@@ -58,44 +58,46 @@ export interface Retirement {
   chainNum: number;
 }
 
-export async function getRetirementByTxHash(
-  txHash: string
+export async function getRetirementById(
+  id: string
 ): Promise<Retirement | null> {
-  const query = `
-    query GetRetirementByTx($hash: String!) {
-      txByHash(hash: $hash) {
-        retirementsByChainNumAndBlockHeightAndTxIdx(first: 1) {
+  // If it looks like a base64 nodeId, look up directly
+  if (id.startsWith("Wy")) {
+    try {
+      const query = `
+        query GetRetirementByNodeId($id: ID!) {
+          retirement(nodeId: $id) {
+            nodeId type amount batchDenom jurisdiction
+            owner reason timestamp txHash blockHeight chainNum
+          }
+        }
+      `;
+      const data = await queryGraphQL<{ retirement: Retirement | null }>(
+        query,
+        { id }
+      );
+      return data.retirement;
+    } catch {
+      return null;
+    }
+  }
+
+  // Otherwise treat as tx hash — query allRetirements with condition
+  try {
+    const query = `
+      query GetRetirementByTxHash($hash: String!) {
+        allRetirements(condition: { txHash: $hash }, first: 1) {
           nodes {
-            nodeId
-            type
-            amount
-            batchDenom
-            jurisdiction
-            owner
-            reason
-            timestamp
-            txHash
-            blockHeight
-            chainNum
+            nodeId type amount batchDenom jurisdiction
+            owner reason timestamp txHash blockHeight chainNum
           }
         }
       }
-    }
-  `;
-
-  // Try lookup by tx hash first
-  try {
+    `;
     const data = await queryGraphQL<{
-      txByHash: {
-        retirementsByChainNumAndBlockHeightAndTxIdx: {
-          nodes: Retirement[];
-        };
-      } | null;
-    }>(query, { hash: txHash });
-
-    const nodes =
-      data.txByHash?.retirementsByChainNumAndBlockHeightAndTxIdx?.nodes;
-    return nodes?.[0] ?? null;
+      allRetirements: { nodes: Retirement[] };
+    }>(query, { hash: id });
+    return data.allRetirements.nodes[0] ?? null;
   } catch {
     return null;
   }

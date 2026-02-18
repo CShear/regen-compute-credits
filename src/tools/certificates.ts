@@ -1,9 +1,9 @@
-import { getRetirementByTxHash, getRecentRetirements } from "../services/indexer.js";
+import { getRetirementById } from "../services/indexer.js";
 
 export async function getRetirementCertificate(retirementId: string) {
   try {
-    // Try looking up by tx hash first, fall back to recent retirements search
-    const retirement = await getRetirementByTxHash(retirementId);
+    // Look up by nodeId or tx hash
+    const retirement = await getRetirementById(retirementId);
 
     if (!retirement) {
       return {
