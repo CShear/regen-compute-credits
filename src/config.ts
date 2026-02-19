@@ -34,7 +34,7 @@ export function loadConfig(): Config {
       process.env.REGEN_MARKETPLACE_URL || "https://app.regen.network",
 
     rpcUrl:
-      process.env.REGEN_RPC_URL || "https://mainnet.regen.network:26657",
+      process.env.REGEN_RPC_URL || "http://mainnet.regen.network:26657",
     chainId: process.env.REGEN_CHAIN_ID || "regen-1",
     walletMnemonic: process.env.REGEN_WALLET_MNEMONIC || undefined,
     paymentProvider:
