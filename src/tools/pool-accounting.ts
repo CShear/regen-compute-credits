@@ -10,9 +10,12 @@ function renderMoney(cents: number): string {
 export async function recordPoolContributionTool(input: ContributionInput) {
   try {
     const receipt = await poolAccounting.recordContribution(input);
+    const title = receipt.duplicate
+      ? "## Pool Contribution Already Recorded"
+      : "## Pool Contribution Recorded";
 
     const lines = [
-      "## Pool Contribution Recorded",
+      title,
       "",
       `| Field | Value |`,
       `|-------|-------|`,
@@ -21,9 +24,13 @@ export async function recordPoolContributionTool(input: ContributionInput) {
       `| Amount | ${renderMoney(receipt.record.amountUsdCents)} |`,
       `| Month | ${receipt.record.month} |`,
       `| Source | ${receipt.record.source} |`,
+      `| Duplicate | ${receipt.duplicate ? "Yes" : "No"} |`,
       `| User Lifetime Total | ${renderMoney(receipt.userSummary.totalUsdCents)} |`,
       `| Month Pool Total | ${renderMoney(receipt.monthSummary.totalUsdCents)} |`,
     ];
+    if (receipt.record.externalEventId) {
+      lines.splice(9, 0, `| External Event ID | ${receipt.record.externalEventId} |`);
+    }
 
     return { content: [{ type: "text" as const, text: lines.join("\n") }] };
   } catch (error) {

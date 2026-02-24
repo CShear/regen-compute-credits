@@ -10,6 +10,7 @@ export interface ContributionInput {
   email?: string;
   customerId?: string;
   subscriptionId?: string;
+  externalEventId?: string;
   tierId?: SubscriptionTierId;
   amountUsd?: number;
   amountUsdCents?: number;
@@ -24,6 +25,7 @@ export interface ContributionRecord {
   email?: string;
   customerId?: string;
   subscriptionId?: string;
+  externalEventId?: string;
   tierId?: SubscriptionTierId;
   amountUsdCents: number;
   contributedAt: string;
@@ -80,6 +82,7 @@ export interface PoolAccountingStore {
 
 export interface ContributionReceipt {
   record: ContributionRecord;
+  duplicate: boolean;
   userSummary: UserContributionSummary;
   monthSummary: MonthlyPoolSummary;
 }

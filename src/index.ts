@@ -9,6 +9,7 @@ import { retireCredits } from "./tools/retire.js";
 import {
   listSubscriptionTiersTool,
   manageSubscriptionTool,
+  syncSubscriptionPoolContributionsTool,
 } from "./tools/subscriptions.js";
 import {
   getPoolAccountingSummaryTool,
@@ -112,13 +113,14 @@ const server = new McpServer(
           ]
         : []),
       "5. list_subscription_tiers / manage_subscription — manage $1/$3/$5 recurring contribution plans",
-      "6. record_pool_contribution / get_pool_accounting_summary — track monthly subscription pool accounting",
-      "7. run_monthly_batch_retirement — execute the monthly pooled credit retirement batch",
-      "8. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
-      "9. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
-      "10. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
-      "11. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
-      "12. link_identity_session / recover_identity_session — identity linking and recovery flows",
+      "6. sync_subscription_pool_contributions — ingest paid Stripe invoices into pool accounting with idempotency",
+      "7. record_pool_contribution / get_pool_accounting_summary — track monthly subscription pool accounting",
+      "8. run_monthly_batch_retirement — execute the monthly pooled credit retirement batch",
+      "9. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
+      "10. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
+      "11. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
+      "12. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
+      "13. link_identity_session / recover_identity_session — identity linking and recovery flows",
       "",
       ...(walletMode
         ? [
@@ -128,6 +130,7 @@ const server = new McpServer(
             "Without a wallet, retire_credits returns marketplace links instead of broadcasting on-chain transactions.",
           ]),
       "The manage_subscription tool can create, update, or cancel Stripe subscriptions.",
+      "The sync_subscription_pool_contributions tool ingests paid Stripe invoices into the pool ledger safely (duplicate-safe via invoice IDs).",
       "Pool accounting tools support per-user contribution tracking and monthly aggregation summaries.",
       "Monthly batch retirement uses pool accounting totals to execute one on-chain retirement per month.",
       "Subscriber dashboard tools expose fractional attribution and impact history per user.",
@@ -288,6 +291,50 @@ server.tool(
   }
 );
 
+// Tool: Sync paid Stripe invoices into pool accounting
+server.tool(
+  "sync_subscription_pool_contributions",
+  "Ingests paid Stripe invoices into pool accounting for a customer/email with idempotent deduplication by invoice ID. Useful for recurring subscription reconciliation.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Optional month filter in YYYY-MM format"),
+    email: z
+      .string()
+      .optional()
+      .describe("Customer email used for Stripe customer lookup"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID (optional alternative to email)"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Optional internal user ID override for pool attribution"),
+    limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Max invoices to fetch from Stripe (1-100, default 100)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({ month, email, customer_id, user_id, limit }) => {
+    return syncSubscriptionPoolContributionsTool(
+      month,
+      email,
+      customer_id,
+      user_id,
+      limit
+    );
+  }
+);
+
 // Tool: Record a contribution entry in the pool accounting ledger
 server.tool(
   "record_pool_contribution",
@@ -309,6 +356,10 @@ server.tool(
       .string()
       .optional()
       .describe("Stripe subscription ID associated with this contribution"),
+    source_event_id: z
+      .string()
+      .optional()
+      .describe("External event ID for idempotency (e.g., stripe invoice ID)"),
     tier: z
       .enum(["starter", "growth", "impact"])
       .optional()
@@ -342,6 +393,7 @@ server.tool(
     email,
     customer_id,
     subscription_id,
+    source_event_id,
     tier,
     amount_usd,
     amount_usd_cents,
@@ -353,6 +405,7 @@ server.tool(
       email,
       customerId: customer_id,
       subscriptionId: subscription_id,
+      externalEventId: source_event_id,
       tierId: tier,
       amountUsd: amount_usd,
       amountUsdCents: amount_usd_cents,

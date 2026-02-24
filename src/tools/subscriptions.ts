@@ -1,4 +1,5 @@
 import { StripeSubscriptionService } from "../services/subscription/stripe.js";
+import { SubscriptionPoolSyncService } from "../services/subscription/pool-sync.js";
 import type {
   SubscriptionIdentityInput,
   SubscriptionState,
@@ -6,6 +7,7 @@ import type {
 } from "../services/subscription/types.js";
 
 const subscriptions = new StripeSubscriptionService();
+const poolSync = new SubscriptionPoolSyncService();
 
 function renderState(title: string, state: SubscriptionState): string {
   const lines: string[] = [
@@ -139,6 +141,73 @@ export async function manageSubscriptionTool(
         {
           type: "text" as const,
           text: `Subscription operation failed: ${message}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
+function formatMoney(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+export async function syncSubscriptionPoolContributionsTool(
+  month?: string,
+  email?: string,
+  customerId?: string,
+  userId?: string,
+  limit?: number
+) {
+  try {
+    const result = await poolSync.syncPaidInvoices({
+      month,
+      email,
+      customerId,
+      userId,
+      limit,
+    });
+
+    const lines: string[] = [
+      "## Subscription Pool Sync",
+      "",
+      "| Field | Value |",
+      "|-------|-------|",
+      `| Customer ID | ${result.customerId || "N/A"} |`,
+      `| Email | ${result.email || "N/A"} |`,
+      `| Month Filter | ${result.month || "none"} |`,
+      `| Invoices Fetched | ${result.fetchedInvoiceCount} |`,
+      `| Invoices Processed | ${result.processedInvoiceCount} |`,
+      `| Synced | ${result.syncedCount} |`,
+      `| Duplicates | ${result.duplicateCount} |`,
+      `| Skipped (month filter) | ${result.skippedCount} |`,
+    ];
+
+    if (result.records.length > 0) {
+      lines.push(
+        "",
+        "### Processed Invoices",
+        "",
+        "| Invoice ID | Contribution ID | Amount | Duplicate | Paid At |",
+        "|------------|------------------|--------|-----------|---------|",
+        ...result.records.map(
+          (record) =>
+            `| ${record.invoiceId} | ${record.contributionId} | ${formatMoney(record.amountUsdCents)} | ${record.duplicated ? "Yes" : "No"} | ${record.paidAt} |`
+        )
+      );
+    } else {
+      lines.push("", "No paid invoices matched the provided filter.");
+    }
+
+    return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown sync error occurred";
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Subscription pool sync failed: ${message}`,
         },
       ],
       isError: true,

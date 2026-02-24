@@ -191,6 +191,25 @@ export class PoolAccountingService {
 
   async recordContribution(input: ContributionInput): Promise<ContributionReceipt> {
     const state = await this.store.readState();
+    const externalEventId = normalize(input.externalEventId);
+
+    if (externalEventId) {
+      const existing = state.contributions.find(
+        (item) => item.externalEventId === externalEventId
+      );
+      if (existing) {
+        const userRecords = state.contributions.filter(
+          (item) => item.userId === existing.userId
+        );
+        return {
+          record: existing,
+          duplicate: true,
+          userSummary: summarizeUserRecords(existing.userId, userRecords),
+          monthSummary: summarizeMonth(existing.month, state.contributions),
+        };
+      }
+    }
+
     const userId = resolveUserId(input);
     const contributedAt = toIsoTimestamp(input.contributedAt);
     const month = toMonth(contributedAt);
@@ -202,6 +221,7 @@ export class PoolAccountingService {
       email: normalizeEmail(input.email),
       customerId: normalize(input.customerId),
       subscriptionId: normalize(input.subscriptionId),
+      externalEventId,
       tierId: input.tierId,
       amountUsdCents,
       contributedAt,
@@ -221,6 +241,7 @@ export class PoolAccountingService {
     const userRecords = state.contributions.filter((item) => item.userId === userId);
     return {
       record,
+      duplicate: false,
       userSummary: summarizeUserRecords(userId, userRecords),
       monthSummary: summarizeMonth(month, state.contributions),
     };

@@ -188,11 +188,29 @@ Creates, updates, checks, or cancels Stripe subscription state for a customer.
 | `full_name` | Name to use when creating a Stripe customer. |
 | `payment_method_id` | Stripe PaymentMethod to set as default when subscribing. |
 
+### `sync_subscription_pool_contributions`
+
+Fetches paid Stripe invoices for a customer and records them into pool accounting with duplicate protection by invoice ID (`stripe_invoice:<id>`).
+
+**When it's used:** Subscription reconciliation and safe reruns of invoice ingestion without double-counting.
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `month` | Optional month filter in `YYYY-MM` format. |
+| `email` | Stripe customer email (alternative to `customer_id`). |
+| `customer_id` | Stripe customer ID (alternative to `email`). |
+| `user_id` | Optional internal user ID override for attribution. |
+| `limit` | Optional max invoices to fetch (`1-100`, default `100`). |
+
 ### `record_pool_contribution`
 
 Records a contribution event in the pool ledger for per-user accounting and monthly aggregation.
 
 **When it's used:** Internal/admin workflows that ingest paid subscription events into the retirement pool ledger.
+
+Supports optional `source_event_id` for idempotent writes when ingesting external payment events.
 
 ### `get_pool_accounting_summary`
 

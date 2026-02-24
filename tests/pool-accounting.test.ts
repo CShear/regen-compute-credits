@@ -166,4 +166,30 @@ describe("PoolAccountingService", () => {
     const months = await service.listAvailableMonths();
     expect(months).toEqual(["2026-03", "2026-02", "2026-01"]);
   });
+
+  it("deduplicates records when externalEventId is reused", async () => {
+    const first = await service.recordContribution({
+      customerId: "cus_123",
+      amountUsdCents: 300,
+      contributedAt: "2026-03-10T00:00:00.000Z",
+      externalEventId: "stripe_invoice:in_123",
+      source: "subscription",
+    });
+
+    const second = await service.recordContribution({
+      customerId: "cus_123",
+      amountUsdCents: 300,
+      contributedAt: "2026-03-10T00:00:00.000Z",
+      externalEventId: "stripe_invoice:in_123",
+      source: "subscription",
+    });
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(true);
+    expect(second.record.id).toBe(first.record.id);
+
+    const march = await service.getMonthlySummary("2026-03");
+    expect(march.contributionCount).toBe(1);
+    expect(march.totalUsdCents).toBe(300);
+  });
 });

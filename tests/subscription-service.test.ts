@@ -152,4 +152,75 @@ describe("StripeSubscriptionService", () => {
     expect(cancelUrl).toContain("/subscriptions/sub_123");
     expect(String(cancelInit.body)).toContain("cancel_at_period_end=true");
   });
+
+  it("lists paid usd invoices normalized for pool sync", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          data: [{ id: "cus_123", email: "alice@example.com" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          data: [
+            {
+              id: "in_2",
+              customer: "cus_123",
+              customer_email: "alice@example.com",
+              subscription: "sub_123",
+              amount_paid: 500,
+              currency: "usd",
+              status_transitions: { paid_at: 1_707_000_100 },
+              lines: { data: [{ id: "il_2", price: { id: "price_growth" } }] },
+            },
+            {
+              id: "in_skip_currency",
+              customer: "cus_123",
+              amount_paid: 500,
+              currency: "eur",
+              status_transitions: { paid_at: 1_707_000_200 },
+              lines: { data: [{ id: "il_3", price: { id: "price_growth" } }] },
+            },
+            {
+              id: "in_1",
+              customer: "cus_123",
+              customer_email: "alice@example.com",
+              subscription: "sub_123",
+              amount_paid: 100,
+              currency: "usd",
+              status_transitions: { paid_at: 1_707_000_000 },
+              lines: { data: [{ id: "il_1", price: { id: "price_starter" } }] },
+            },
+          ],
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new StripeSubscriptionService();
+    const invoices = await service.listPaidInvoices(
+      { email: "alice@example.com" },
+      { limit: 5 }
+    );
+
+    expect(invoices).toHaveLength(2);
+    expect(invoices[0]).toMatchObject({
+      invoiceId: "in_1",
+      customerId: "cus_123",
+      customerEmail: "alice@example.com",
+      subscriptionId: "sub_123",
+      amountPaidCents: 100,
+      priceId: "price_starter",
+    });
+    expect(invoices[1]).toMatchObject({
+      invoiceId: "in_2",
+      amountPaidCents: 500,
+      priceId: "price_growth",
+    });
+
+    const [invoicesUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(invoicesUrl).toContain(
+      "/invoices?customer=cus_123&status=paid&limit=5"
+    );
+  });
 });
