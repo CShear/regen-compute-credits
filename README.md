@@ -239,6 +239,34 @@ Dashboard page content includes:
 
 **When it's used:** Publishing the user account impact dashboard page for web navigation or direct sharing.
 
+### `start_identity_auth_session`
+
+Starts a hardened identity verification session using either:
+- `method=email` (issues a one-time verification code), or
+- `method=oauth` (issues a signed OAuth state token).
+
+### `verify_identity_auth_session`
+
+Verifies a pending identity session:
+- email sessions require `verification_code`,
+- oauth sessions require `oauth_state_token`, `auth_provider`, and `auth_subject`.
+
+Returns a verified `auth_session_id` that can be passed into `retire_credits`.
+
+### `get_identity_auth_session`
+
+Returns session status (`pending`, `verified`, `expired`, `locked`) and attribution metadata.
+
+### `link_identity_session`
+
+Links a verified auth session to an internal `user_id` for long-lived attribution continuity.
+
+### `recover_identity_session`
+
+Provides recovery flow for verified identities:
+- `action=start` issues a recovery token for a verified email identity,
+- `action=complete` consumes that token and mints a fresh verified auth session.
+
 ### `retire_credits`
 
 Retires ecocredits on Regen Network. Operates in two modes:
@@ -258,11 +286,13 @@ When `ECOBRIDGE_ENABLED=true`, the fallback message also suggests `retire_via_ec
 | `beneficiary_email` | Email for retirement attribution metadata. Optional. |
 | `auth_provider` | OAuth provider for identity attribution (e.g., `google`, `github`). Optional (requires `auth_subject`). |
 | `auth_subject` | OAuth user subject/ID for attribution metadata. Optional (requires `auth_provider`). |
+| `auth_session_id` | Verified identity auth session ID. When provided, verified session identity overrides direct auth/email fields. |
 | `jurisdiction` | Retirement jurisdiction (ISO 3166-1, e.g., 'US', 'DE'). Optional. |
 | `reason` | Reason for retiring credits (recorded on-chain). Optional. |
 
 **When it's used:** The user wants to take action and actually fund ecological regeneration.
-When provided, identity attribution fields are embedded into retirement reason metadata so `get_retirement_certificate` can display user attribution details later.
+
+Identity attribution fields are embedded into retirement reason metadata so `get_retirement_certificate` can display user attribution details later.
 
 ### `browse_ecobridge_tokens`
 
@@ -376,6 +406,18 @@ export REGEN_CERTIFICATE_OUTPUT_DIR=./data/certificates
 # optional subscriber dashboard frontend settings
 export REGEN_DASHBOARD_BASE_URL=https://regen.network/dashboard
 export REGEN_DASHBOARD_OUTPUT_DIR=./data/dashboards
+# optional identity auth store path
+export REGEN_AUTH_STORE_PATH=./data/auth-state.json
+# strongly recommended shared secret for auth code/state/recovery signing
+export REGEN_AUTH_SECRET=replace-with-long-random-secret
+# optional auth session TTL in seconds (default 900)
+export REGEN_AUTH_SESSION_TTL_SECONDS=900
+# optional max verification attempts before lock (default 5)
+export REGEN_AUTH_MAX_ATTEMPTS=5
+# optional recovery token TTL in seconds (default 86400)
+export REGEN_AUTH_RECOVERY_TTL_SECONDS=86400
+# optional allowed OAuth providers CSV (default google,github)
+export REGEN_AUTH_ALLOWED_OAUTH_PROVIDERS=google,github
 # optional protocol fee basis points for monthly pool budgets (800-1200, default 1000)
 export REGEN_PROTOCOL_FEE_BPS=1000
 # optional batch credit mix policy when credit_type is omitted: balanced | off

@@ -21,6 +21,13 @@ import {
 } from "./tools/attribution-dashboard.js";
 import { publishSubscriberCertificatePageTool } from "./tools/certificate-frontend.js";
 import { publishSubscriberDashboardPageTool } from "./tools/dashboard-frontend.js";
+import {
+  getIdentityAuthSessionTool,
+  linkIdentitySessionTool,
+  recoverIdentitySessionTool,
+  startIdentityAuthSessionTool,
+  verifyIdentityAuthSessionTool,
+} from "./tools/auth.js";
 import { loadConfig, isWalletConfigured } from "./config.js";
 import {
   fetchRegistry,
@@ -110,6 +117,8 @@ const server = new McpServer(
       "8. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
       "9. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
       "10. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
+      "11. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
+      "12. link_identity_session / recover_identity_session — identity linking and recovery flows",
       "",
       ...(walletMode
         ? [
@@ -124,6 +133,7 @@ const server = new McpServer(
       "Subscriber dashboard tools expose fractional attribution and impact history per user.",
       "Certificate frontend tool publishes shareable subscriber certificate pages to a configurable URL/path.",
       "Dashboard frontend tool publishes shareable subscriber impact dashboard pages to a configurable URL/path.",
+      "Identity auth tools support verified email/OAuth attribution sessions with expiry, attempt limits, linking, and recovery.",
     ].join("\n"),
   }
 );
@@ -579,6 +589,173 @@ server.tool(
   }
 );
 
+// Tool: Start identity auth session
+server.tool(
+  "start_identity_auth_session",
+  "Starts an identity verification session using email or OAuth. Returns session metadata and the challenge material needed to verify.",
+  {
+    method: z
+      .enum(["email", "oauth"])
+      .describe("Auth method to start"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Beneficiary email (required for method=email, optional for method=oauth)"),
+    beneficiary_name: z
+      .string()
+      .optional()
+      .describe("Optional beneficiary display name"),
+    auth_provider: z
+      .string()
+      .optional()
+      .describe("OAuth provider (required for method=oauth)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ method, beneficiary_email, beneficiary_name, auth_provider }) => {
+    return startIdentityAuthSessionTool(
+      method,
+      beneficiary_email,
+      beneficiary_name,
+      auth_provider
+    );
+  }
+);
+
+// Tool: Verify identity auth session
+server.tool(
+  "verify_identity_auth_session",
+  "Verifies an identity auth session. Email sessions require verification_code; OAuth sessions require oauth_state_token + auth_provider + auth_subject.",
+  {
+    session_id: z
+      .string()
+      .describe("Identity auth session ID"),
+    method: z
+      .enum(["email", "oauth"])
+      .describe("Session method"),
+    verification_code: z
+      .string()
+      .optional()
+      .describe("Email verification code (required for method=email)"),
+    oauth_state_token: z
+      .string()
+      .optional()
+      .describe("OAuth state token issued at session start (required for method=oauth)"),
+    auth_provider: z
+      .string()
+      .optional()
+      .describe("OAuth provider (required for method=oauth)"),
+    auth_subject: z
+      .string()
+      .optional()
+      .describe("OAuth subject/user ID (required for method=oauth)"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Optional verified email to store during oauth verification"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({
+    session_id,
+    method,
+    verification_code,
+    oauth_state_token,
+    auth_provider,
+    auth_subject,
+    beneficiary_email,
+  }) => {
+    return verifyIdentityAuthSessionTool({
+      sessionId: session_id,
+      method,
+      verificationCode: verification_code,
+      oauthStateToken: oauth_state_token,
+      authProvider: auth_provider,
+      authSubject: auth_subject,
+      beneficiaryEmail: beneficiary_email,
+    });
+  }
+);
+
+// Tool: Get identity auth session status
+server.tool(
+  "get_identity_auth_session",
+  "Returns status and metadata for an identity auth session (pending/verified/expired/locked).",
+  {
+    session_id: z
+      .string()
+      .describe("Identity auth session ID"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ session_id }) => {
+    return getIdentityAuthSessionTool(session_id);
+  }
+);
+
+// Tool: Link verified identity session to internal user
+server.tool(
+  "link_identity_session",
+  "Links a verified identity auth session to an internal user ID for attribution continuity.",
+  {
+    session_id: z
+      .string()
+      .describe("Verified auth session ID"),
+    user_id: z
+      .string()
+      .describe("Internal user ID to link"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ session_id, user_id }) => {
+    return linkIdentitySessionTool(session_id, user_id);
+  }
+);
+
+// Tool: Start or complete identity recovery
+server.tool(
+  "recover_identity_session",
+  "Handles identity session recovery. action=start issues a recovery token by verified email; action=complete consumes token and issues a fresh verified session.",
+  {
+    action: z
+      .enum(["start", "complete"])
+      .describe("Recovery action"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Verified beneficiary email (required for action=start)"),
+    recovery_token: z
+      .string()
+      .optional()
+      .describe("Recovery token (required for action=complete)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ action, beneficiary_email, recovery_token }) => {
+    return recoverIdentitySessionTool(action, beneficiary_email, recovery_token);
+  }
+);
+
 // Tool: Retire credits — either direct on-chain execution or marketplace link
 server.tool(
   "retire_credits",
@@ -612,6 +789,12 @@ server.tool(
       .string()
       .optional()
       .describe("OAuth subject/user ID for identity attribution"),
+    auth_session_id: z
+      .string()
+      .optional()
+      .describe(
+        "Verified identity auth session ID from verify_identity_auth_session; overrides direct auth/email fields when present"
+      ),
     jurisdiction: z
       .string()
       .optional()
@@ -636,6 +819,7 @@ server.tool(
     beneficiary_email,
     auth_provider,
     auth_subject,
+    auth_session_id,
     jurisdiction,
     reason,
   }) => {
@@ -647,7 +831,8 @@ server.tool(
       reason,
       beneficiary_email,
       auth_provider,
-      auth_subject
+      auth_subject,
+      auth_session_id
     );
   }
 );

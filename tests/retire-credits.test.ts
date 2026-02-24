@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   signAndBroadcast: vi.fn(),
   selectBestOrders: vi.fn(),
   waitForRetirement: vi.fn(),
+  resolveVerifiedIdentity: vi.fn(),
   cryptoAuthorizePayment: vi.fn(),
   cryptoCapturePayment: vi.fn(),
   cryptoRefundPayment: vi.fn(),
@@ -32,6 +33,14 @@ vi.mock("../src/services/order-selector.js", () => ({
 
 vi.mock("../src/services/indexer.js", () => ({
   waitForRetirement: mocks.waitForRetirement,
+}));
+
+vi.mock("../src/services/auth/service.js", () => ({
+  AuthSessionService: class {
+    resolveVerifiedIdentity(sessionId: string) {
+      return mocks.resolveVerifiedIdentity(sessionId);
+    }
+  },
 }));
 
 vi.mock("../src/services/payment/crypto.js", () => ({
@@ -129,6 +138,9 @@ describe("retireCredits", () => {
       status: "captured",
     });
     mocks.stripeRefundPayment.mockResolvedValue(undefined);
+    mocks.resolveVerifiedIdentity.mockResolvedValue({
+      authMethod: "none",
+    });
 
     mocks.selectBestOrders.mockResolvedValue({
       orders: [
@@ -355,5 +367,85 @@ describe("retireCredits", () => {
       { buyer: "regen1buyer", creditClass: "C01" }
     );
     expect(mocks.stripeCapturePayment).toHaveBeenCalledWith("stripe-auth-1");
+  });
+
+  it("uses verified identity session data when auth_session_id is provided", async () => {
+    mocks.isWalletConfigured.mockReturnValue(true);
+    mocks.resolveVerifiedIdentity.mockResolvedValue({
+      authMethod: "oauth",
+      beneficiaryName: "Session Alice",
+      beneficiaryEmail: "session-alice@example.com",
+      authProvider: "github",
+      authSubject: "gh-user-123",
+    });
+    mocks.initWallet.mockResolvedValue({ address: "regen1buyer" });
+    mocks.signAndBroadcast.mockResolvedValue({
+      code: 0,
+      transactionHash: "ABC123",
+      height: 12345,
+      rawLog: "",
+    });
+    mocks.waitForRetirement.mockResolvedValue({ nodeId: "WyCert123" });
+
+    const result = await retireCredits(
+      "C01",
+      1,
+      "Manual Alice",
+      "US-CA",
+      "Unit test retirement",
+      "manual@example.com",
+      "google",
+      "google-manual-sub",
+      "auth_session_123"
+    );
+    const text = responseText(result);
+
+    expect(mocks.resolveVerifiedIdentity).toHaveBeenCalledWith("auth_session_123");
+
+    const messages = mocks.signAndBroadcast.mock.calls[0]?.[0];
+    const retirementReason =
+      messages?.[0]?.value?.orders?.[0]?.retirementReason;
+    const parsedReason = parseAttributedReason(retirementReason);
+    expect(parsedReason.identity).toMatchObject({
+      method: "oauth",
+      name: "Session Alice",
+      email: "session-alice@example.com",
+      provider: "github",
+      subject: "gh-user-123",
+    });
+
+    expect(text).toContain("| Beneficiary Name | Session Alice |");
+    expect(text).toContain("| Beneficiary Email | session-alice@example.com |");
+    expect(text).toContain("| Auth Provider | github |");
+    expect(text).toContain("| Auth Subject | gh-user-123 |");
+    expect(text).not.toContain("manual@example.com");
+    expect(text).not.toContain("google-manual-sub");
+  });
+
+  it("falls back when auth_session_id resolution fails", async () => {
+    mocks.isWalletConfigured.mockReturnValue(true);
+    mocks.resolveVerifiedIdentity.mockRejectedValue(
+      new Error("auth_session_id is not verified")
+    );
+
+    const result = await retireCredits(
+      "C01",
+      1,
+      "Alice",
+      "US-CA",
+      "Unit test retirement",
+      "alice@example.com",
+      "google",
+      "google-sub-123",
+      "auth_bad"
+    );
+    const text = responseText(result);
+
+    expect(text).toContain(
+      "Identity auth session failed: auth_session_id is not verified"
+    );
+    expect(text).toContain("## Retire Ecocredits on Regen Network");
+    expect(mocks.initWallet).not.toHaveBeenCalled();
+    expect(mocks.signAndBroadcast).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,9 @@ import { CryptoPaymentProvider } from "../services/payment/crypto.js";
 import { StripePaymentProvider } from "../services/payment/stripe-stub.js";
 import type { PaymentProvider } from "../services/payment/types.js";
 import { appendIdentityToReason, captureIdentity } from "../services/identity.js";
+import { AuthSessionService } from "../services/auth/service.js";
+
+const authSessions = new AuthSessionService();
 
 function getMarketplaceLink(): string {
   const config = loadConfig();
@@ -93,15 +96,47 @@ export async function retireCredits(
   reason?: string,
   beneficiaryEmail?: string,
   authProvider?: string,
-  authSubject?: string
+  authSubject?: string,
+  authSessionId?: string
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const providedAuthSessionId = authSessionId?.trim();
+  let verifiedSessionIdentity: ReturnType<typeof captureIdentity> | undefined;
+  if (providedAuthSessionId) {
+    try {
+      verifiedSessionIdentity =
+        await authSessions.resolveVerifiedIdentity(providedAuthSessionId);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return marketplaceFallback(
+        `Identity auth session failed: ${errMsg}`,
+        creditClass,
+        quantity,
+        beneficiaryName,
+        beneficiaryEmail,
+        authProvider
+      );
+    }
+  }
+
+  const effectiveBeneficiaryName =
+    verifiedSessionIdentity?.beneficiaryName || beneficiaryName;
+  const effectiveBeneficiaryEmail = providedAuthSessionId
+    ? verifiedSessionIdentity?.beneficiaryEmail
+    : beneficiaryEmail;
+  const effectiveAuthProvider = providedAuthSessionId
+    ? verifiedSessionIdentity?.authProvider
+    : authProvider;
+  const effectiveAuthSubject = providedAuthSessionId
+    ? verifiedSessionIdentity?.authSubject
+    : authSubject;
+
   let identity: ReturnType<typeof captureIdentity> = { authMethod: "none" };
   try {
     identity = captureIdentity({
-      beneficiaryName,
-      beneficiaryEmail,
-      authProvider,
-      authSubject,
+      beneficiaryName: effectiveBeneficiaryName,
+      beneficiaryEmail: effectiveBeneficiaryEmail,
+      authProvider: effectiveAuthProvider,
+      authSubject: effectiveAuthSubject,
     });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -109,9 +144,9 @@ export async function retireCredits(
       `Identity capture failed: ${errMsg}`,
       creditClass,
       quantity,
-      beneficiaryName,
-      beneficiaryEmail,
-      authProvider
+      effectiveBeneficiaryName,
+      effectiveBeneficiaryEmail,
+      effectiveAuthProvider
     );
   }
 
@@ -327,9 +362,9 @@ export async function retireCredits(
       `Direct retirement failed: ${errMsg}`,
       creditClass,
       quantity,
-      identity.beneficiaryName || beneficiaryName,
-      identity.beneficiaryEmail || beneficiaryEmail,
-      identity.authProvider || authProvider
+      identity.beneficiaryName || effectiveBeneficiaryName,
+      identity.beneficiaryEmail || effectiveBeneficiaryEmail,
+      identity.authProvider || effectiveAuthProvider
     );
   }
 }
