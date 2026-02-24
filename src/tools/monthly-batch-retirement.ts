@@ -76,7 +76,8 @@ function resolveTimeoutMs(value: number | undefined, label: string): number | un
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number | undefined,
-  label: string
+  label: string,
+  onTimeout?: (pendingPromise: Promise<T>) => void
 ): Promise<T> {
   if (!timeoutMs) {
     return promise;
@@ -85,6 +86,7 @@ async function withTimeout<T>(
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
+      onTimeout?.(promise);
       reject(new Error(`${label} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
   });
@@ -649,6 +651,11 @@ export async function runMonthlyReconciliationTool(
 
   let runId: string | undefined;
   let syncResult: SubscriptionPoolSyncResult | undefined;
+  const timedOutPendingOperations: Promise<unknown>[] = [];
+
+  const trackTimedOutOperation = (pendingPromise: Promise<unknown>) => {
+    timedOutPendingOperations.push(pendingPromise.catch(() => undefined));
+  };
 
   try {
     try {
@@ -676,7 +683,8 @@ export async function runMonthlyReconciliationTool(
           limit: input.invoiceLimit,
         }),
         syncTimeoutMs,
-        "Contribution sync"
+        "Contribution sync",
+        trackTimedOutOperation
       );
     } else if (syncScope === "all_customers") {
       syncResult = await withTimeout(
@@ -687,7 +695,8 @@ export async function runMonthlyReconciliationTool(
           allCustomers: true,
         }),
         syncTimeoutMs,
-        "Contribution sync"
+        "Contribution sync",
+        trackTimedOutOperation
       );
     }
 
@@ -870,7 +879,8 @@ export async function runMonthlyReconciliationTool(
         paymentDenom: "USDC",
       }),
       batchTimeoutMs,
-      "Monthly batch execution"
+      "Monthly batch execution",
+      trackTimedOutOperation
     );
 
     const finalStatus: Exclude<ReconciliationRunStatus, "in_progress"> =
@@ -935,6 +945,12 @@ export async function runMonthlyReconciliationTool(
       isError: true,
     };
   } finally {
-    releaseReconciliationLock(lockKey);
+    if (timedOutPendingOperations.length > 0) {
+      void Promise.allSettled(timedOutPendingOperations).finally(() => {
+        releaseReconciliationLock(lockKey);
+      });
+    } else {
+      releaseReconciliationLock(lockKey);
+    }
   }
 }

@@ -267,6 +267,7 @@ Supports all `run_monthly_batch_retirement` execution parameters plus sync contr
 All-customer sync output now reports whether Stripe pagination was truncated by the `invoice_max_pages` cap so operators can rerun with a higher limit when needed.
 Live execution preflight also requires the latest record for that month/credit type to be a fresh `dry_run` (not older than the latest contribution), unless explicitly overridden.
 Reconciliation runs are also single-flight per month/credit type; concurrent overlapping requests are rejected until the active run completes.
+When a sync/batch timeout is hit, the run lock remains active until the timed-out phase fully settles, preventing overlapping retries from racing.
 
 **When it's used:** Monthly close/reconciliation where operators want deterministic “sync then run batch” execution with one tool invocation.
 

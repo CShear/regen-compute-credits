@@ -222,7 +222,23 @@ describe("runMonthlyReconciliationTool", () => {
   it("returns timeout error when contribution sync exceeds sync_timeout_ms", async () => {
     vi.useFakeTimers();
     try {
-      mocks.syncPaidInvoices.mockReturnValueOnce(new Promise(() => {}));
+      let resolveSync:
+        | ((value: {
+            scope: "all_customers";
+            month: string;
+            fetchedInvoiceCount: number;
+            processedInvoiceCount: number;
+            syncedCount: number;
+            duplicateCount: number;
+            skippedCount: number;
+            records: [];
+          }) => void)
+        | undefined;
+      mocks.syncPaidInvoices.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSync = resolve;
+        })
+      );
 
       const resultPromise = runMonthlyReconciliationTool({
         month: "2026-03",
@@ -236,6 +252,79 @@ describe("runMonthlyReconciliationTool", () => {
         "Monthly reconciliation failed: Contribution sync timed out after 5ms"
       );
       expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
+
+      resolveSync?.({
+        scope: "all_customers",
+        month: "2026-03",
+        fetchedInvoiceCount: 0,
+        processedInvoiceCount: 0,
+        syncedCount: 0,
+        duplicateCount: 0,
+        skippedCount: 0,
+        records: [],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retains reconciliation lock until timed-out sync promise settles", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveFirstSync:
+        | ((value: {
+            scope: "all_customers";
+            month: string;
+            fetchedInvoiceCount: number;
+            processedInvoiceCount: number;
+            syncedCount: number;
+            duplicateCount: number;
+            skippedCount: number;
+            records: [];
+          }) => void)
+        | undefined;
+
+      mocks.syncPaidInvoices.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirstSync = resolve;
+        })
+      );
+
+      const timedOutRunPromise = runMonthlyReconciliationTool({
+        month: "2026-03",
+        syncTimeoutMs: 5,
+      });
+      await vi.advanceTimersByTimeAsync(5);
+      const timedOutRun = await timedOutRunPromise;
+
+      expect(timedOutRun.isError).toBe(true);
+      expect(responseText(timedOutRun)).toContain(
+        "Contribution sync timed out after 5ms"
+      );
+
+      const blocked = await runMonthlyReconciliationTool({ month: "2026-03" });
+      expect(blocked.isError).toBe(true);
+      expect(responseText(blocked)).toContain("| Batch Status | blocked_in_progress |");
+
+      resolveFirstSync?.({
+        scope: "all_customers",
+        month: "2026-03",
+        fetchedInvoiceCount: 0,
+        processedInvoiceCount: 0,
+        syncedCount: 0,
+        duplicateCount: 0,
+        skippedCount: 0,
+        records: [],
+      });
+      for (let i = 0; i < 6; i += 1) {
+        await Promise.resolve();
+      }
+
+      const retry = await runMonthlyReconciliationTool({ month: "2026-03" });
+      expect(responseText(retry)).not.toContain("| Batch Status | blocked_in_progress |");
+      expect(retry.isError).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
@@ -244,7 +333,12 @@ describe("runMonthlyReconciliationTool", () => {
   it("returns timeout error when batch phase exceeds batch_timeout_ms", async () => {
     vi.useFakeTimers();
     try {
-      mocks.runMonthlyBatch.mockReturnValueOnce(new Promise(() => {}));
+      let resolveBatch: ((value: unknown) => void) | undefined;
+      mocks.runMonthlyBatch.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveBatch = resolve;
+        })
+      );
 
       const resultPromise = runMonthlyReconciliationTool({
         month: "2026-03",
@@ -257,6 +351,19 @@ describe("runMonthlyReconciliationTool", () => {
       expect(responseText(result)).toContain(
         "Monthly reconciliation failed: Monthly batch execution timed out after 5ms"
       );
+
+      resolveBatch?.({
+        status: "dry_run",
+        month: "2026-03",
+        creditType: undefined,
+        budgetUsdCents: 300,
+        plannedQuantity: "1.000000",
+        plannedCostMicro: 3_000_000n,
+        plannedCostDenom: "USDC",
+        message: "late completion after timeout",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
     } finally {
       vi.useRealTimers();
     }
