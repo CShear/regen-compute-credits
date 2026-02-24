@@ -588,6 +588,13 @@ server.tool(
       .describe(
         "If true, allows batch execution to continue when all-customer sync is truncated by invoice_max_pages"
       ),
+    allow_execute_without_dry_run: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "If true, allows dry_run=false execution even when no latest dry-run record exists for the target month and credit type"
+      ),
     reason: z
       .string()
       .optional()
@@ -637,6 +644,7 @@ server.tool(
     dry_run,
     force,
     allow_partial_sync,
+    allow_execute_without_dry_run,
     reason,
     jurisdiction,
     sync_scope,
@@ -653,6 +661,7 @@ server.tool(
       dryRun: dry_run,
       force,
       allowPartialSync: allow_partial_sync,
+      allowExecuteWithoutDryRun: allow_execute_without_dry_run,
       reason,
       jurisdiction,
       syncScope: sync_scope,

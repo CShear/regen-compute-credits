@@ -37,7 +37,7 @@ function responseText(result: { content: Array<{ type: "text"; text: string }> }
 
 describe("runMonthlyReconciliationTool", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
 
     mocks.syncPaidInvoices.mockResolvedValue({
       scope: "all_customers",
@@ -219,6 +219,95 @@ describe("runMonthlyReconciliationTool", () => {
     expect(text).toContain("| Batch Status | dry_run |");
     expect(text).toContain("| Fetch Truncated | Yes |");
     expect(mocks.runMonthlyBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks live execution without a latest dry-run record by default", async () => {
+    mocks.getExecutionHistory.mockResolvedValueOnce([
+      {
+        id: "batch_success",
+        month: "2026-03",
+        creditType: undefined,
+        dryRun: false,
+        status: "success",
+        reason: "success",
+        budgetUsdCents: 300,
+        spentMicro: "2500000",
+        spentDenom: "USDC",
+        retiredQuantity: "1.250000",
+        executedAt: "2026-03-31T12:00:00.000Z",
+      },
+    ]);
+
+    const result = await runMonthlyReconciliationTool({
+      month: "2026-03",
+      dryRun: false,
+    });
+    const text = responseText(result);
+
+    expect(mocks.getExecutionHistory).toHaveBeenCalledWith({
+      month: "2026-03",
+      creditType: undefined,
+      limit: 1,
+      newestFirst: true,
+    });
+    expect(result.isError).toBe(true);
+    expect(text).toContain("| Batch Status | blocked_preflight |");
+    expect(text).toContain("latest execution state is `success`");
+    expect(text).toContain("allow_execute_without_dry_run=true");
+    expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
+  });
+
+  it("allows live execution when latest record is dry-run", async () => {
+    mocks.getExecutionHistory.mockResolvedValueOnce([
+      {
+        id: "batch_dry",
+        month: "2026-03",
+        creditType: undefined,
+        dryRun: true,
+        status: "dry_run",
+        reason: "plan",
+        budgetUsdCents: 300,
+        spentMicro: "0",
+        spentDenom: "USDC",
+        retiredQuantity: "0.000000",
+        executedAt: "2026-03-31T13:00:00.000Z",
+      },
+    ]);
+
+    const result = await runMonthlyReconciliationTool({
+      month: "2026-03",
+      dryRun: false,
+    });
+    const text = responseText(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(text).toContain("| Batch Status | dry_run |");
+    expect(mocks.runMonthlyBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        month: "2026-03",
+        dryRun: false,
+      })
+    );
+  });
+
+  it("allows live execution without latest dry-run when override is enabled", async () => {
+    mocks.getExecutionHistory.mockResolvedValueOnce([]);
+
+    const result = await runMonthlyReconciliationTool({
+      month: "2026-03",
+      dryRun: false,
+      allowExecuteWithoutDryRun: true,
+    });
+    const text = responseText(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(text).toContain("| Batch Status | dry_run |");
+    expect(mocks.runMonthlyBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        month: "2026-03",
+        dryRun: false,
+      })
+    );
   });
 
   it("returns monthly batch execution history table", async () => {

@@ -25,6 +25,7 @@ export interface RunMonthlyReconciliationInput {
   dryRun?: boolean;
   force?: boolean;
   allowPartialSync?: boolean;
+  allowExecuteWithoutDryRun?: boolean;
   reason?: string;
   jurisdiction?: string;
   syncScope?: SyncScope;
@@ -495,6 +496,41 @@ export async function runMonthlyReconciliationTool(
         content: [{ type: "text" as const, text: lines.join("\n") }],
         isError: true,
       };
+    }
+
+    if (input.dryRun === false && !input.allowExecuteWithoutDryRun) {
+      const latestExecution = (
+        await executor.getExecutionHistory({
+          month: input.month,
+          creditType: input.creditType,
+          limit: 1,
+          newestFirst: true,
+        })
+      )[0];
+
+      if (latestExecution?.status !== "dry_run") {
+        const lines: string[] = [
+          "## Monthly Reconciliation",
+          "",
+          "| Field | Value |",
+          "|-------|-------|",
+          `| Month | ${input.month} |`,
+          `| Sync Scope | ${syncScope} |`,
+          "| Batch Status | blocked_preflight |",
+          "",
+          "### Contribution Sync",
+          "",
+          renderSyncSummary(syncScope, syncResult),
+          "",
+          `Live execution was blocked because the latest execution state is \`${latestExecution?.status || "none"}\`, not \`dry_run\`.`,
+          "Run with `dry_run=true` first, then re-run with `dry_run=false`, or set `allow_execute_without_dry_run=true` to override.",
+        ];
+
+        return {
+          content: [{ type: "text" as const, text: lines.join("\n") }],
+          isError: true,
+        };
+      }
     }
 
     const batchResult = await executor.runMonthlyBatch({
