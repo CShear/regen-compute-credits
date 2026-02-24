@@ -15,6 +15,7 @@ const executor = new MonthlyBatchRetirementExecutor();
 const poolAccounting = new PoolAccountingService();
 const poolSync = new SubscriptionPoolSyncService();
 const MONTH_REGEX = /^\d{4}-\d{2}$/;
+const activeReconciliationLocks = new Set<string>();
 
 type SyncScope = "none" | "customer" | "all_customers";
 
@@ -35,6 +36,25 @@ export interface RunMonthlyReconciliationInput {
   userId?: string;
   invoiceLimit?: number;
   invoiceMaxPages?: number;
+}
+
+function reconciliationLockKey(
+  month: string,
+  creditType?: "carbon" | "biodiversity"
+): string {
+  return `${month}:${creditType || "all"}`;
+}
+
+function acquireReconciliationLock(lockKey: string): boolean {
+  if (activeReconciliationLocks.has(lockKey)) {
+    return false;
+  }
+  activeReconciliationLocks.add(lockKey);
+  return true;
+}
+
+function releaseReconciliationLock(lockKey: string): void {
+  activeReconciliationLocks.delete(lockKey);
 }
 
 function formatUsd(cents: number): string {
@@ -450,9 +470,28 @@ export async function getMonthlyReconciliationStatusTool(
 export async function runMonthlyReconciliationTool(
   input: RunMonthlyReconciliationInput
 ) {
-  try {
-    const syncScope = input.syncScope || "all_customers";
+  const syncScope = input.syncScope || "all_customers";
+  const lockKey = reconciliationLockKey(input.month, input.creditType);
+  if (!acquireReconciliationLock(lockKey)) {
+    const lines: string[] = [
+      "## Monthly Reconciliation",
+      "",
+      "| Field | Value |",
+      "|-------|-------|",
+      `| Month | ${input.month} |`,
+      `| Sync Scope | ${syncScope} |`,
+      `| Credit Type | ${input.creditType || "all"} |`,
+      "| Batch Status | blocked_in_progress |",
+      "",
+      "A reconciliation run for this month/credit type is already in progress. Wait for it to finish, then retry.",
+    ];
+    return {
+      content: [{ type: "text" as const, text: lines.join("\n") }],
+      isError: true,
+    };
+  }
 
+  try {
     let syncResult: SubscriptionPoolSyncResult | undefined;
     if (syncScope === "customer") {
       syncResult = await poolSync.syncPaidInvoices({
@@ -631,5 +670,7 @@ export async function runMonthlyReconciliationTool(
       ],
       isError: true,
     };
+  } finally {
+    releaseReconciliationLock(lockKey);
   }
 }

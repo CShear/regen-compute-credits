@@ -419,6 +419,53 @@ describe("runMonthlyReconciliationTool", () => {
     expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
   });
 
+  it("blocks concurrent reconciliation runs for the same month and credit type", async () => {
+    let resolveFirstSync:
+      | ((value: {
+          scope: "all_customers";
+          month: string;
+          fetchedInvoiceCount: number;
+          processedInvoiceCount: number;
+          syncedCount: number;
+          duplicateCount: number;
+          skippedCount: number;
+          records: [];
+        }) => void)
+      | undefined;
+
+    mocks.syncPaidInvoices.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFirstSync = resolve;
+      })
+    );
+
+    const firstRun = runMonthlyReconciliationTool({ month: "2026-03" });
+    await Promise.resolve();
+
+    const blocked = await runMonthlyReconciliationTool({ month: "2026-03" });
+    const blockedText = responseText(blocked);
+
+    expect(blocked.isError).toBe(true);
+    expect(blockedText).toContain("| Batch Status | blocked_in_progress |");
+    expect(blockedText).toContain("already in progress");
+    expect(mocks.syncPaidInvoices).toHaveBeenCalledTimes(1);
+
+    resolveFirstSync?.({
+      scope: "all_customers",
+      month: "2026-03",
+      fetchedInvoiceCount: 0,
+      processedInvoiceCount: 0,
+      syncedCount: 0,
+      duplicateCount: 0,
+      skippedCount: 0,
+      records: [],
+    });
+
+    const firstResult = await firstRun;
+    expect(firstResult.isError).toBeUndefined();
+    expect(mocks.runMonthlyBatch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns monthly batch execution history table", async () => {
     const result = await getMonthlyBatchExecutionHistoryTool(
       "2026-03",
