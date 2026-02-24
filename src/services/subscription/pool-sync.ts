@@ -1,4 +1,5 @@
 import { PoolAccountingService } from "../pool-accounting/service.js";
+import type { PaidInvoice } from "./stripe.js";
 import { StripeSubscriptionService } from "./stripe.js";
 import { getTierIdForStripePrice } from "./tiers.js";
 import type { SubscriptionIdentityInput } from "./types.js";
@@ -37,6 +38,10 @@ export interface SubscriptionPoolSyncResult {
   customerId?: string;
   email?: string;
   month?: string;
+  truncated?: boolean;
+  hasMore?: boolean;
+  pageCount?: number;
+  maxPages?: number;
   fetchedInvoiceCount: number;
   processedInvoiceCount: number;
   syncedCount: number;
@@ -72,14 +77,30 @@ export class SubscriptionPoolSyncService {
       throw new Error("month must be in YYYY-MM format");
     }
 
-    const fetched = allCustomers
-      ? await this.subscriptions.listPaidInvoicesAcrossCustomers({
+    let fetched: PaidInvoice[] = [];
+    let truncated: boolean | undefined;
+    let hasMore: boolean | undefined;
+    let pageCount: number | undefined;
+    let maxPages: number | undefined;
+
+    if (allCustomers) {
+      const acrossCustomers = await this.subscriptions.listPaidInvoicesAcrossCustomers(
+        {
           limit: input.limit,
           maxPages: input.maxPages,
-        })
-      : await this.subscriptions.listPaidInvoices(identity, {
-          limit: input.limit,
-        });
+        }
+      );
+      fetched = acrossCustomers.invoices;
+      truncated = acrossCustomers.truncated;
+      hasMore = acrossCustomers.hasMore;
+      pageCount = acrossCustomers.pageCount;
+      maxPages = acrossCustomers.maxPages;
+    } else {
+      fetched = await this.subscriptions.listPaidInvoices(identity, {
+        limit: input.limit,
+      });
+    }
+
     const invoices = month
       ? fetched.filter((invoice) => invoice.paidAt.slice(0, 7) === month)
       : fetched;
@@ -130,6 +151,10 @@ export class SubscriptionPoolSyncService {
         invoices[0]?.customerId || fetched[0]?.customerId || identity.customerId,
       email: identity.email || invoices[0]?.customerEmail || fetched[0]?.customerEmail,
       month,
+      truncated,
+      hasMore,
+      pageCount,
+      maxPages,
       fetchedInvoiceCount: fetched.length,
       processedInvoiceCount: invoices.length,
       syncedCount,

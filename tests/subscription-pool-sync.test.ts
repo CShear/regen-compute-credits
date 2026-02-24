@@ -22,7 +22,13 @@ class InMemoryPoolAccountingStore implements PoolAccountingStore {
 class StubSubscriptionService {
   constructor(
     private readonly customerInvoices: PaidInvoice[],
-    private readonly allInvoices: PaidInvoice[] = []
+    private readonly allInvoices: PaidInvoice[] = [],
+    private readonly allInvoiceMeta?: {
+      truncated?: boolean;
+      hasMore?: boolean;
+      pageCount?: number;
+      maxPages?: number;
+    }
   ) {}
 
   async listPaidInvoices(
@@ -34,8 +40,20 @@ class StubSubscriptionService {
 
   async listPaidInvoicesAcrossCustomers(
     _options?: unknown
-  ): Promise<PaidInvoice[]> {
-    return this.allInvoices;
+  ): Promise<{
+    invoices: PaidInvoice[];
+    truncated: boolean;
+    hasMore: boolean;
+    pageCount: number;
+    maxPages: number;
+  }> {
+    return {
+      invoices: this.allInvoices,
+      truncated: Boolean(this.allInvoiceMeta?.truncated),
+      hasMore: Boolean(this.allInvoiceMeta?.hasMore),
+      pageCount: this.allInvoiceMeta?.pageCount ?? 1,
+      maxPages: this.allInvoiceMeta?.maxPages ?? 10,
+    };
   }
 }
 
@@ -159,9 +177,48 @@ describe("SubscriptionPoolSyncService", () => {
     expect(result.processedInvoiceCount).toBe(2);
     expect(result.syncedCount).toBe(2);
     expect(result.duplicateCount).toBe(0);
+    expect(result.truncated).toBe(false);
+    expect(result.pageCount).toBe(1);
+    expect(result.maxPages).toBe(10);
 
     const march = await poolAccounting.getMonthlySummary("2026-03");
     expect(march.contributionCount).toBe(2);
     expect(march.totalUsdCents).toBe(400);
+  });
+
+  it("reports truncation metadata for all-customer sync", async () => {
+    const invoices: PaidInvoice[] = [
+      {
+        invoiceId: "in_truncated",
+        customerId: "cus_a",
+        customerEmail: "a@example.com",
+        subscriptionId: "sub_a",
+        priceId: "price_starter",
+        amountPaidCents: 100,
+        paidAt: "2026-03-01T00:00:00.000Z",
+      },
+    ];
+
+    const sync = new SubscriptionPoolSyncService(
+      new StubSubscriptionService([], invoices, {
+        truncated: true,
+        hasMore: true,
+        pageCount: 3,
+        maxPages: 3,
+      }),
+      poolAccounting
+    );
+
+    const result = await sync.syncPaidInvoices({
+      allCustomers: true,
+      month: "2026-03",
+      maxPages: 3,
+    });
+
+    expect(result.scope).toBe("all_customers");
+    expect(result.truncated).toBe(true);
+    expect(result.hasMore).toBe(true);
+    expect(result.pageCount).toBe(3);
+    expect(result.maxPages).toBe(3);
   });
 });

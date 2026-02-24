@@ -211,6 +211,14 @@ function renderSyncSummary(
     `| Skipped (month filter) | ${result.skippedCount} |`,
   ];
 
+  if (result.scope === "all_customers") {
+    lines.push(
+      `| Pages Fetched | ${typeof result.pageCount === "number" ? result.pageCount : "N/A"} |`,
+      `| Max Pages | ${typeof result.maxPages === "number" ? result.maxPages : "N/A"} |`,
+      `| Fetch Truncated | ${result.truncated ? "Yes" : "No"} |`
+    );
+  }
+
   if (result.records.length > 0) {
     lines.push(
       "",
@@ -225,6 +233,13 @@ function renderSyncSummary(
     if (result.records.length > 20) {
       lines.push("", `Showing 20 of ${result.records.length} processed invoices.`);
     }
+  }
+
+  if (result.scope === "all_customers" && result.truncated) {
+    lines.push(
+      "",
+      "Warning: invoice fetch stopped before Stripe pagination was exhausted. Increase `invoice_max_pages` and rerun to avoid partial reconciliation."
+    );
   }
 
   return lines.join("\n");
@@ -350,17 +365,28 @@ export async function getMonthlyReconciliationStatusTool(
       protocolFeeBps: config.protocolFeeBps,
       paymentDenom: "USDC",
     });
-    const latestExecution = (
-      await executor.getExecutionHistory({
-        month,
-        creditType,
-        limit: 1,
-        newestFirst: true,
-      })
-    )[0];
+    const [latestExecution, latestSuccessExecution] = await Promise.all([
+      executor
+        .getExecutionHistory({
+          month,
+          creditType,
+          limit: 1,
+          newestFirst: true,
+        })
+        .then((records) => records[0]),
+      executor
+        .getExecutionHistory({
+          month,
+          creditType,
+          status: "success",
+          limit: 1,
+          newestFirst: true,
+        })
+        .then((records) => records[0]),
+    ]);
 
     const hasContributions = monthlySummary.totalUsdCents > 0;
-    const alreadySucceeded = latestExecution?.status === "success";
+    const alreadySucceeded = Boolean(latestSuccessExecution);
     const readyForExecution = hasContributions && !alreadySucceeded;
 
     let recommendation = "Run `run_monthly_reconciliation` with `sync_scope=all_customers`.";
@@ -369,7 +395,7 @@ export async function getMonthlyReconciliationStatusTool(
         "No contributions found. Sync invoices first (`run_monthly_reconciliation` with sync enabled), then re-check.";
     } else if (alreadySucceeded) {
       recommendation =
-        "A successful execution already exists for this month. Use `force=true` only if rerun is intentional.";
+        `A successful execution already exists for this month${latestSuccessExecution?.executedAt ? ` (latest success: ${latestSuccessExecution.executedAt})` : ""}. Use \`force=true\` only if rerun is intentional.`;
     } else if (latestExecution?.status === "failed") {
       recommendation =
         "Latest execution failed. Run `run_monthly_reconciliation` with `dry_run=true` first, then execute with `dry_run=false`.";
@@ -392,6 +418,8 @@ export async function getMonthlyReconciliationStatusTool(
       `| Net Credit Budget | ${formatUsd(protocolFee.creditBudgetUsdCents)} |`,
       `| Latest Execution Status | ${latestExecution?.status || "none"} |`,
       `| Latest Execution At | ${latestExecution?.executedAt || "N/A"} |`,
+      `| Any Successful Execution | ${alreadySucceeded ? "Yes" : "No"} |`,
+      `| Latest Successful Execution At | ${latestSuccessExecution?.executedAt || "N/A"} |`,
       `| Latest Execution Dry Run | ${latestExecution ? (latestExecution.dryRun ? "Yes" : "No") : "N/A"} |`,
       `| Latest Tx Hash | ${latestExecution?.txHash ? `\`${latestExecution.txHash}\`` : "N/A"} |`,
       `| Latest Retirement ID | ${latestExecution?.retirementId || "N/A"} |`,

@@ -274,18 +274,22 @@ describe("StripeSubscriptionService", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const service = new StripeSubscriptionService();
-    const invoices = await service.listPaidInvoicesAcrossCustomers({
+    const result = await service.listPaidInvoicesAcrossCustomers({
       limit: 2,
       maxPages: 5,
     });
 
-    expect(invoices).toHaveLength(3);
-    expect(invoices[0]).toMatchObject({
+    expect(result.invoices).toHaveLength(3);
+    expect(result.truncated).toBe(false);
+    expect(result.hasMore).toBe(false);
+    expect(result.pageCount).toBe(2);
+    expect(result.maxPages).toBe(5);
+    expect(result.invoices[0]).toMatchObject({
       invoiceId: "in_1",
       customerId: "cus_321",
       amountPaidCents: 300,
     });
-    expect(invoices[2]).toMatchObject({
+    expect(result.invoices[2]).toMatchObject({
       invoiceId: "in_3",
       customerId: "cus_999",
       amountPaidCents: 500,
@@ -297,5 +301,54 @@ describe("StripeSubscriptionService", () => {
     expect(secondUrl).toContain(
       "/invoices?status=paid&limit=2&starting_after=in_2"
     );
+  });
+
+  it("marks all-customer invoice listing as truncated when max pages is reached", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          has_more: true,
+          data: [
+            {
+              id: "in_2",
+              customer: "cus_123",
+              amount_paid: 100,
+              currency: "usd",
+              status_transitions: { paid_at: 1_707_000_100 },
+              lines: { data: [{ price: { id: "price_starter" } }] },
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          has_more: true,
+          data: [
+            {
+              id: "in_1",
+              customer: "cus_321",
+              amount_paid: 200,
+              currency: "usd",
+              status_transitions: { paid_at: 1_707_000_000 },
+              lines: { data: [{ price: { id: "price_growth" } }] },
+            },
+          ],
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new StripeSubscriptionService();
+    const result = await service.listPaidInvoicesAcrossCustomers({
+      limit: 1,
+      maxPages: 2,
+    });
+
+    expect(result.invoices).toHaveLength(2);
+    expect(result.truncated).toBe(true);
+    expect(result.hasMore).toBe(true);
+    expect(result.pageCount).toBe(2);
+    expect(result.maxPages).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

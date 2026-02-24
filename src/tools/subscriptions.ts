@@ -159,6 +159,10 @@ function renderPoolSyncResult(
     customerId?: string;
     email?: string;
     month?: string;
+    truncated?: boolean;
+    hasMore?: boolean;
+    pageCount?: number;
+    maxPages?: number;
     fetchedInvoiceCount: number;
     processedInvoiceCount: number;
     syncedCount: number;
@@ -189,6 +193,14 @@ function renderPoolSyncResult(
     `| Skipped (month filter) | ${result.skippedCount} |`,
   ];
 
+  if (result.scope === "all_customers") {
+    lines.push(
+      `| Pages Fetched | ${typeof result.pageCount === "number" ? result.pageCount : "N/A"} |`,
+      `| Max Pages | ${typeof result.maxPages === "number" ? result.maxPages : "N/A"} |`,
+      `| Fetch Truncated | ${result.truncated ? "Yes" : "No"} |`
+    );
+  }
+
   if (result.records.length > 0) {
     lines.push(
       "",
@@ -203,6 +215,13 @@ function renderPoolSyncResult(
     );
   } else {
     lines.push("", "No paid invoices matched the provided filter.");
+  }
+
+  if (result.scope === "all_customers" && result.truncated) {
+    lines.push(
+      "",
+      "Warning: invoice fetch stopped before Stripe pagination was exhausted. Increase `max_pages` and rerun to complete reconciliation."
+    );
   }
 
   return lines.join("\n");

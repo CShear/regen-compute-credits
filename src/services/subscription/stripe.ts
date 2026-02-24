@@ -83,6 +83,14 @@ export interface PaidInvoice {
   paidAt: string;
 }
 
+export interface PaidInvoiceAcrossCustomersResult {
+  invoices: PaidInvoice[];
+  truncated: boolean;
+  hasMore: boolean;
+  pageCount: number;
+  maxPages: number;
+}
+
 function trimOrUndefined(value?: string): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
@@ -509,7 +517,7 @@ export class StripeSubscriptionService {
   async listPaidInvoicesAcrossCustomers(options?: {
     limit?: number;
     maxPages?: number;
-  }): Promise<PaidInvoice[]> {
+  }): Promise<PaidInvoiceAcrossCustomersResult> {
     const limit = this.clampInvoiceFetchLimit(options?.limit);
     const maxPages =
       typeof options?.maxPages === "number" && Number.isInteger(options.maxPages)
@@ -518,8 +526,12 @@ export class StripeSubscriptionService {
 
     const results: PaidInvoice[] = [];
     let startingAfter: string | undefined;
+    let pageCount = 0;
+    let hasMore = false;
+    let reachedEnd = false;
 
     for (let page = 0; page < maxPages; page += 1) {
+      pageCount += 1;
       const invoices = await this.stripeRequest<StripeListResponse<StripeInvoice>>(
         "GET",
         "/invoices",
@@ -537,14 +549,25 @@ export class StripeSubscriptionService {
       );
 
       const lastId = invoices.data[invoices.data.length - 1]?.id;
-      if (!invoices.has_more || !lastId) {
+      hasMore = Boolean(invoices.has_more);
+      if (!hasMore) {
+        reachedEnd = true;
+        break;
+      }
+      if (!lastId) {
         break;
       }
       startingAfter = lastId;
     }
 
-    return results
-      .filter((item): item is PaidInvoice => Boolean(item))
-      .sort((a, b) => a.paidAt.localeCompare(b.paidAt));
+    return {
+      invoices: results
+        .filter((item): item is PaidInvoice => Boolean(item))
+        .sort((a, b) => a.paidAt.localeCompare(b.paidAt)),
+      truncated: !reachedEnd,
+      hasMore,
+      pageCount,
+      maxPages,
+    };
   }
 }

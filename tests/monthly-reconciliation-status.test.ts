@@ -69,10 +69,18 @@ describe("getMonthlyReconciliationStatusTool", () => {
       limit: 1,
       newestFirst: true,
     });
+    expect(mocks.getExecutionHistory).toHaveBeenNthCalledWith(2, {
+      month: "2026-03",
+      creditType: undefined,
+      status: "success",
+      limit: 1,
+      newestFirst: true,
+    });
     expect(text).toContain("## Monthly Reconciliation Status");
     expect(text).toContain("| Gross Pool Budget | $0.00 |");
     expect(text).toContain("| Protocol Fee | $0.00 (10.00%) |");
     expect(text).toContain("| Latest Execution Status | none |");
+    expect(text).toContain("| Any Successful Execution | No |");
     expect(text).toContain("| Ready For Execution | No |");
     expect(text).toContain("Recommendation: No contributions found");
   });
@@ -123,30 +131,102 @@ describe("getMonthlyReconciliationStatusTool", () => {
       totalUsd: 3,
       contributors: [],
     });
-    mocks.getExecutionHistory.mockResolvedValueOnce([
-      {
-        id: "batch_success",
-        month: "2026-03",
-        creditType: "carbon",
-        dryRun: false,
-        status: "success",
-        reason: "Done",
-        budgetUsdCents: 300,
-        spentMicro: "2500000",
-        spentDenom: "USDC",
-        retiredQuantity: "1.250000",
-        txHash: "TX123",
-        retirementId: "WyRet123",
-        executedAt: "2026-03-31T12:00:00.000Z",
-      },
-    ]);
+    mocks.getExecutionHistory
+      .mockResolvedValueOnce([
+        {
+          id: "batch_success",
+          month: "2026-03",
+          creditType: "carbon",
+          dryRun: false,
+          status: "success",
+          reason: "Done",
+          budgetUsdCents: 300,
+          spentMicro: "2500000",
+          spentDenom: "USDC",
+          retiredQuantity: "1.250000",
+          txHash: "TX123",
+          retirementId: "WyRet123",
+          executedAt: "2026-03-31T12:00:00.000Z",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "batch_success",
+          month: "2026-03",
+          creditType: "carbon",
+          dryRun: false,
+          status: "success",
+          reason: "Done",
+          budgetUsdCents: 300,
+          spentMicro: "2500000",
+          spentDenom: "USDC",
+          retiredQuantity: "1.250000",
+          txHash: "TX123",
+          retirementId: "WyRet123",
+          executedAt: "2026-03-31T12:00:00.000Z",
+        },
+      ]);
 
     const result = await getMonthlyReconciliationStatusTool("2026-03", "carbon");
     const text = responseText(result);
 
     expect(text).toContain("| Latest Execution Status | success |");
+    expect(text).toContain("| Any Successful Execution | Yes |");
     expect(text).toContain("| Latest Tx Hash | `TX123` |");
     expect(text).toContain("| Latest Retirement ID | WyRet123 |");
+    expect(text).toContain("| Ready For Execution | No |");
+    expect(text).toContain("A successful execution already exists");
+  });
+
+  it("blocks readiness when a prior success exists but latest run is dry-run", async () => {
+    mocks.getMonthlySummary.mockResolvedValueOnce({
+      month: "2026-03",
+      contributionCount: 4,
+      uniqueContributors: 3,
+      totalUsdCents: 1200,
+      totalUsd: 12,
+      contributors: [],
+    });
+    mocks.getExecutionHistory
+      .mockResolvedValueOnce([
+        {
+          id: "batch_dryrun_new",
+          month: "2026-03",
+          creditType: "carbon",
+          dryRun: true,
+          status: "dry_run",
+          reason: "verification",
+          budgetUsdCents: 1200,
+          spentMicro: "0",
+          spentDenom: "USDC",
+          retiredQuantity: "0.000000",
+          executedAt: "2026-03-31T13:00:00.000Z",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "batch_success_old",
+          month: "2026-03",
+          creditType: "carbon",
+          dryRun: false,
+          status: "success",
+          reason: "done",
+          budgetUsdCents: 1200,
+          spentMicro: "10000000",
+          spentDenom: "USDC",
+          retiredQuantity: "5.000000",
+          txHash: "TX_OLD",
+          retirementId: "RET_OLD",
+          executedAt: "2026-03-30T12:00:00.000Z",
+        },
+      ]);
+
+    const result = await getMonthlyReconciliationStatusTool("2026-03", "carbon");
+    const text = responseText(result);
+
+    expect(text).toContain("| Latest Execution Status | dry_run |");
+    expect(text).toContain("| Any Successful Execution | Yes |");
+    expect(text).toContain("| Latest Successful Execution At | 2026-03-30T12:00:00.000Z |");
     expect(text).toContain("| Ready For Execution | No |");
     expect(text).toContain("A successful execution already exists");
   });

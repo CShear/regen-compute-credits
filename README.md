@@ -260,6 +260,8 @@ Supports all `run_monthly_batch_retirement` execution parameters plus sync contr
 - `email` / `customer_id` / `user_id` for customer-scoped sync,
 - `invoice_limit` and `invoice_max_pages` for Stripe pagination control.
 
+All-customer sync output now reports whether Stripe pagination was truncated by the `invoice_max_pages` cap so operators can rerun with a higher limit when needed.
+
 **When it's used:** Monthly close/reconciliation where operators want deterministic “sync then run batch” execution with one tool invocation.
 
 ### `get_monthly_batch_execution_history`
@@ -279,6 +281,7 @@ Returns an operator readiness snapshot for a month by combining:
 - pool contribution totals,
 - protocol fee and net budget preview,
 - latest batch execution state (`none`/`dry_run`/`success`/`failed`),
+- latest successful execution lookup (not just latest attempt),
 - actionable recommendation for the next step.
 
 **Parameters:**
