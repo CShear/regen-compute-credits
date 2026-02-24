@@ -144,7 +144,10 @@ src/
 - Include a clear description of what changed and why
 - Reference the issue number (e.g., "Closes #5")
 - Update `CLAUDE.md` if you change architecture or add new services
+- Update relevant documentation if behavior changes
 - Add tests for new functionality
+- Use the repo PR template (`.github/pull_request_template.md`) and complete the `pr_context` block for fast human/agent handoff
+- Assign explicit `owner`, `approver`, and `publisher` in the PR body before requesting final review
 
 ## Questions?
 

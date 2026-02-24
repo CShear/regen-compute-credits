@@ -18,6 +18,9 @@
     "start": "node dist/index.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
+    "gtm:preflight": "node docs/listing-gtm/scripts/preflight-check.mjs",
+    "gtm:preflight:strict": "node docs/listing-gtm/scripts/preflight-check.mjs --strict-urls",
+    "gtm:bundle": "node docs/listing-gtm/scripts/create-release-bundle.mjs",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
