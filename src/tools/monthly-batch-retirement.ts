@@ -100,6 +100,23 @@ async function withTimeout<T>(
   }
 }
 
+function toErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function appendWarningsSection(lines: string[], warnings: string[]): void {
+  if (warnings.length === 0) {
+    return;
+  }
+
+  lines.push(
+    "",
+    "### Warnings",
+    "",
+    ...warnings.map((warning) => `- ${warning}`)
+  );
+}
+
 function toReconciliationSyncSummary(
   syncScope: SyncScope,
   result?: SubscriptionPoolSyncResult
@@ -617,6 +634,7 @@ export async function runMonthlyReconciliationTool(
   const lockKey = reconciliationLockKey(input.month, input.creditType);
   if (!acquireReconciliationLock(lockKey)) {
     let blockedRunId: string | undefined;
+    const blockedWarnings: string[] = [];
     try {
       blockedRunId = (
         await reconciliationHistory.recordBlockedRun({
@@ -626,8 +644,10 @@ export async function runMonthlyReconciliationTool(
             "A reconciliation run for this month/credit type is already in progress.",
         })
       ).id;
-    } catch {
-      // Reconciliation execution should not fail if audit logging is unavailable.
+    } catch (error) {
+      blockedWarnings.push(
+        `Reconciliation run history write failed: ${toErrorMessage(error, "Unknown history write error")}`
+      );
     }
 
     const lines: string[] = [
@@ -643,6 +663,7 @@ export async function runMonthlyReconciliationTool(
       "",
       "A reconciliation run for this month/credit type is already in progress. Wait for it to finish, then retry.",
     ];
+    appendWarningsSection(lines, blockedWarnings);
     return {
       content: [{ type: "text" as const, text: lines.join("\n") }],
       isError: true,
@@ -651,17 +672,42 @@ export async function runMonthlyReconciliationTool(
 
   let runId: string | undefined;
   let syncResult: SubscriptionPoolSyncResult | undefined;
+  const runWarnings: string[] = [];
   const timedOutPendingOperations: Promise<unknown>[] = [];
 
   const trackTimedOutOperation = (pendingPromise: Promise<unknown>) => {
     timedOutPendingOperations.push(pendingPromise.catch(() => undefined));
   };
+  const finishRun = async (
+    finishInput: {
+      status: Exclude<ReconciliationRunStatus, "in_progress">;
+      batchStatus: string;
+      sync?: ReconciliationRunSyncSummary;
+      message?: string;
+      error?: string;
+    },
+    context: string
+  ) => {
+    if (!runId) {
+      return;
+    }
+
+    try {
+      await reconciliationHistory.finishRun(runId, finishInput);
+    } catch (error) {
+      runWarnings.push(
+        `${context}: ${toErrorMessage(error, "Unknown history write error")}`
+      );
+    }
+  };
 
   try {
     try {
       runId = (await reconciliationHistory.startRun(runStartInput)).id;
-    } catch {
-      // Reconciliation execution should not fail if audit logging is unavailable.
+    } catch (error) {
+      runWarnings.push(
+        `Reconciliation run history start failed: ${toErrorMessage(error, "Unknown history start error")}`
+      );
     }
 
     const syncTimeoutMs = resolveTimeoutMs(
@@ -705,17 +751,15 @@ export async function runMonthlyReconciliationTool(
       syncResult?.truncated &&
       !input.allowPartialSync
     ) {
-      if (runId) {
-        await reconciliationHistory
-          .finishRun(runId, {
-            status: "blocked",
-            batchStatus: "blocked_partial_sync",
-            sync: toReconciliationSyncSummary(syncScope, syncResult),
-            message:
-              "All-customer invoice sync was truncated by invoice_max_pages.",
-          })
-          .catch(() => undefined);
-      }
+      await finishRun(
+        {
+          status: "blocked",
+          batchStatus: "blocked_partial_sync",
+          sync: toReconciliationSyncSummary(syncScope, syncResult),
+          message: "All-customer invoice sync was truncated by invoice_max_pages.",
+        },
+        "Reconciliation run history finalize failed"
+      );
 
       const lines: string[] = [
         "## Monthly Reconciliation",
@@ -734,6 +778,7 @@ export async function runMonthlyReconciliationTool(
         "Batch execution was skipped because all-customer invoice sync was truncated by `invoice_max_pages` and may be incomplete.",
         "Increase `invoice_max_pages` and rerun, or set `allow_partial_sync=true` to override (not recommended).",
       ];
+      appendWarningsSection(lines, runWarnings);
 
       return {
         content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -755,17 +800,16 @@ export async function runMonthlyReconciliationTool(
       ]);
 
       if (latestExecution?.status !== "dry_run") {
-        if (runId) {
-          await reconciliationHistory
-            .finishRun(runId, {
-              status: "blocked",
-              batchStatus: "blocked_preflight",
-              sync: toReconciliationSyncSummary(syncScope, syncResult),
-              message:
-                "Latest execution is not dry_run, so live execution preflight was blocked.",
-            })
-            .catch(() => undefined);
-        }
+        await finishRun(
+          {
+            status: "blocked",
+            batchStatus: "blocked_preflight",
+            sync: toReconciliationSyncSummary(syncScope, syncResult),
+            message:
+              "Latest execution is not dry_run, so live execution preflight was blocked.",
+          },
+          "Reconciliation run history finalize failed"
+        );
 
         const lines: string[] = [
           "## Monthly Reconciliation",
@@ -784,6 +828,7 @@ export async function runMonthlyReconciliationTool(
           `Live execution was blocked because the latest execution state is \`${latestExecution?.status || "none"}\`, not \`dry_run\`.`,
           "Run with `dry_run=true` first, then re-run with `dry_run=false`, or set `allow_execute_without_dry_run=true` to override.",
         ];
+        appendWarningsSection(lines, runWarnings);
 
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -795,17 +840,15 @@ export async function runMonthlyReconciliationTool(
         monthSummary.lastContributionAt &&
         latestExecution.executedAt.localeCompare(monthSummary.lastContributionAt) < 0
       ) {
-        if (runId) {
-          await reconciliationHistory
-            .finishRun(runId, {
-              status: "blocked",
-              batchStatus: "blocked_preflight_stale_dry_run",
-              sync: toReconciliationSyncSummary(syncScope, syncResult),
-              message:
-                "Latest dry_run record is older than latest contribution.",
-            })
-            .catch(() => undefined);
-        }
+        await finishRun(
+          {
+            status: "blocked",
+            batchStatus: "blocked_preflight_stale_dry_run",
+            sync: toReconciliationSyncSummary(syncScope, syncResult),
+            message: "Latest dry_run record is older than latest contribution.",
+          },
+          "Reconciliation run history finalize failed"
+        );
 
         const lines: string[] = [
           "## Monthly Reconciliation",
@@ -824,6 +867,7 @@ export async function runMonthlyReconciliationTool(
           `Live execution was blocked because the latest \`dry_run\` (${latestExecution.executedAt}) is older than the latest contribution (${monthSummary.lastContributionAt}).`,
           "Run a fresh `dry_run=true` and then re-run live execution, or set `allow_execute_without_dry_run=true` to override.",
         ];
+        appendWarningsSection(lines, runWarnings);
 
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -833,16 +877,15 @@ export async function runMonthlyReconciliationTool(
     }
 
     if (input.preflightOnly) {
-      if (runId) {
-        await reconciliationHistory
-          .finishRun(runId, {
-            status: "completed",
-            batchStatus: "preflight_ok",
-            sync: toReconciliationSyncSummary(syncScope, syncResult),
-            message: "Preflight-only mode completed successfully.",
-          })
-          .catch(() => undefined);
-      }
+      await finishRun(
+        {
+          status: "completed",
+          batchStatus: "preflight_ok",
+          sync: toReconciliationSyncSummary(syncScope, syncResult),
+          message: "Preflight-only mode completed successfully.",
+        },
+        "Reconciliation run history finalize failed"
+      );
 
       const lines: string[] = [
         "## Monthly Reconciliation",
@@ -861,6 +904,7 @@ export async function runMonthlyReconciliationTool(
         "",
         "Preflight checks passed. No batch execution was performed because `preflight_only=true`.",
       ];
+      appendWarningsSection(lines, runWarnings);
 
       return {
         content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -885,17 +929,16 @@ export async function runMonthlyReconciliationTool(
 
     const finalStatus: Exclude<ReconciliationRunStatus, "in_progress"> =
       batchResult.status === "failed" ? "failed" : "completed";
-    if (runId) {
-      await reconciliationHistory
-        .finishRun(runId, {
-          status: finalStatus,
-          batchStatus: batchResult.status,
-          sync: toReconciliationSyncSummary(syncScope, syncResult),
-          message: batchResult.message,
-          error: batchResult.status === "failed" ? batchResult.message : undefined,
-        })
-        .catch(() => undefined);
-    }
+    await finishRun(
+      {
+        status: finalStatus,
+        batchStatus: batchResult.status,
+        sync: toReconciliationSyncSummary(syncScope, syncResult),
+        message: batchResult.message,
+        error: batchResult.status === "failed" ? batchResult.message : undefined,
+      },
+      "Reconciliation run history finalize failed"
+    );
 
     const lines: string[] = [
       "## Monthly Reconciliation",
@@ -915,6 +958,7 @@ export async function runMonthlyReconciliationTool(
       "",
       renderMonthlyBatchResult(batchResult, "Monthly Batch Retirement"),
     ];
+    appendWarningsSection(lines, runWarnings);
 
     return {
       content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -923,23 +967,25 @@ export async function runMonthlyReconciliationTool(
     const message =
       error instanceof Error ? error.message : "Unknown reconciliation error";
 
-    if (runId) {
-      await reconciliationHistory
-        .finishRun(runId, {
-          status: "failed",
-          batchStatus: "error",
-          sync: toReconciliationSyncSummary(syncScope, syncResult),
-          message,
-          error: message,
-        })
-        .catch(() => undefined);
-    }
+    await finishRun(
+      {
+        status: "failed",
+        batchStatus: "error",
+        sync: toReconciliationSyncSummary(syncScope, syncResult),
+        message,
+        error: message,
+      },
+      "Reconciliation run history finalize failed"
+    );
+
+    const lines: string[] = [`Monthly reconciliation failed: ${message}`];
+    appendWarningsSection(lines, runWarnings);
 
     return {
       content: [
         {
           type: "text" as const,
-          text: `Monthly reconciliation failed: ${message}`,
+          text: lines.join("\n"),
         },
       ],
       isError: true,

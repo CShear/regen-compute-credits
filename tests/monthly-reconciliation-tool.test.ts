@@ -219,6 +219,81 @@ describe("runMonthlyReconciliationTool", () => {
     expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
   });
 
+  it("surfaces warning when reconciliation history start fails", async () => {
+    mocks.startRun.mockRejectedValueOnce(new Error("history store offline"));
+
+    const result = await runMonthlyReconciliationTool({ month: "2026-03" });
+    const text = responseText(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(text).toContain("| Batch Status | dry_run |");
+    expect(text).toContain("### Warnings");
+    expect(text).toContain(
+      "Reconciliation run history start failed: history store offline"
+    );
+  });
+
+  it("surfaces warning when reconciliation history finalize fails", async () => {
+    mocks.finishRun.mockRejectedValueOnce(new Error("history finalize failed"));
+
+    const result = await runMonthlyReconciliationTool({ month: "2026-03" });
+    const text = responseText(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(text).toContain("| Batch Status | dry_run |");
+    expect(text).toContain("### Warnings");
+    expect(text).toContain(
+      "Reconciliation run history finalize failed: history finalize failed"
+    );
+  });
+
+  it("surfaces warning when blocked-run history write fails", async () => {
+    let resolveFirstSync:
+      | ((value: {
+          scope: "all_customers";
+          month: string;
+          fetchedInvoiceCount: number;
+          processedInvoiceCount: number;
+          syncedCount: number;
+          duplicateCount: number;
+          skippedCount: number;
+          records: [];
+        }) => void)
+      | undefined;
+
+    mocks.syncPaidInvoices.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFirstSync = resolve;
+      })
+    );
+    mocks.recordBlockedRun.mockRejectedValueOnce(new Error("blocked audit failed"));
+
+    const firstRun = runMonthlyReconciliationTool({ month: "2026-03" });
+    await Promise.resolve();
+
+    const blocked = await runMonthlyReconciliationTool({ month: "2026-03" });
+    const blockedText = responseText(blocked);
+
+    expect(blocked.isError).toBe(true);
+    expect(blockedText).toContain("| Batch Status | blocked_in_progress |");
+    expect(blockedText).toContain("### Warnings");
+    expect(blockedText).toContain(
+      "Reconciliation run history write failed: blocked audit failed"
+    );
+
+    resolveFirstSync?.({
+      scope: "all_customers",
+      month: "2026-03",
+      fetchedInvoiceCount: 0,
+      processedInvoiceCount: 0,
+      syncedCount: 0,
+      duplicateCount: 0,
+      skippedCount: 0,
+      records: [],
+    });
+    await firstRun;
+  });
+
   it("returns timeout error when contribution sync exceeds sync_timeout_ms", async () => {
     vi.useFakeTimers();
     try {
