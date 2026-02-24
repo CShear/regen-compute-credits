@@ -18,6 +18,7 @@ import {
 } from "./tools/pool-accounting.js";
 import {
   getMonthlyBatchExecutionHistoryTool,
+  getMonthlyReconciliationRunHistoryTool,
   getMonthlyReconciliationStatusTool,
   runMonthlyBatchRetirementTool,
   runMonthlyReconciliationTool,
@@ -126,11 +127,12 @@ const server = new McpServer(
       "10. run_monthly_reconciliation — optional contribution sync + monthly batch in one operator workflow",
       "11. get_monthly_batch_execution_history — query stored monthly batch run history with filters",
       "12. get_monthly_reconciliation_status — operator readiness/status view for a target month",
-      "13. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
-      "14. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
-      "15. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
-      "16. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
-      "17. link_identity_session / recover_identity_session — identity linking and recovery flows",
+      "13. get_monthly_reconciliation_run_history — query stored reconciliation orchestration run history with filters",
+      "14. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
+      "15. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
+      "16. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
+      "17. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
+      "18. link_identity_session / recover_identity_session — identity linking and recovery flows",
       "",
       ...(walletMode
         ? [
@@ -147,6 +149,7 @@ const server = new McpServer(
       "The run_monthly_reconciliation tool orchestrates contribution sync and monthly batch execution in one call.",
       "The get_monthly_batch_execution_history tool returns persisted batch run history for operator auditing and troubleshooting.",
       "The get_monthly_reconciliation_status tool summarizes contribution totals, latest execution state, and readiness guidance for a month.",
+      "The get_monthly_reconciliation_run_history tool returns persisted orchestration history across success/failure/blocked preflight outcomes.",
       "Subscriber dashboard tools expose fractional attribution and impact history per user.",
       "Certificate frontend tool publishes shareable subscriber certificate pages to a configurable URL/path.",
       "Dashboard frontend tool publishes shareable subscriber impact dashboard pages to a configurable URL/path.",
@@ -762,6 +765,45 @@ server.tool(
   },
   async ({ month, credit_type }) => {
     return getMonthlyReconciliationStatusTool(month, credit_type);
+  }
+);
+
+// Tool: Query persisted monthly reconciliation orchestration run history
+server.tool(
+  "get_monthly_reconciliation_run_history",
+  "Returns persisted monthly reconciliation orchestration history with optional filters for month, status, credit type, and record limit.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Optional month filter in YYYY-MM format"),
+    status: z
+      .enum(["in_progress", "completed", "blocked", "failed"])
+      .optional()
+      .describe("Optional reconciliation run status filter"),
+    credit_type: z
+      .enum(["carbon", "biodiversity"])
+      .optional()
+      .describe("Optional credit type filter"),
+    limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Max records to return (1-200, default 50)"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, status, credit_type, limit }) => {
+    return getMonthlyReconciliationRunHistoryTool(
+      month,
+      status,
+      credit_type,
+      limit
+    );
   }
 );
 

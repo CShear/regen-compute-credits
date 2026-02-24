@@ -296,6 +296,16 @@ Returns an operator readiness snapshot for a month by combining:
 
 **When it's used:** Pre-flight check before monthly execution, and quick triage when deciding whether to sync, dry-run, execute, or avoid reruns.
 
+### `get_monthly_reconciliation_run_history`
+
+Returns persisted reconciliation orchestration history from the local run ledger (`REGEN_RECONCILIATION_RUNS_PATH`) with optional filters:
+- `month` (`YYYY-MM`)
+- `status` (`in_progress` | `completed` | `blocked` | `failed`)
+- `credit_type` (`carbon` | `biodiversity`)
+- `limit` (`1-200`, default `50`)
+
+**When it's used:** Operator auditing/troubleshooting across end-to-end reconciliation attempts, including blocked preflight runs and timeout/error failures.
+
 ### `publish_subscriber_certificate_page`
 
 Generates a user-facing HTML certificate page for a subscriber's monthly fractional attribution record and returns:

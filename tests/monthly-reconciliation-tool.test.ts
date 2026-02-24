@@ -5,6 +5,10 @@ const mocks = vi.hoisted(() => ({
   getExecutionHistory: vi.fn(),
   syncPaidInvoices: vi.fn(),
   getMonthlySummary: vi.fn(),
+  startRun: vi.fn(),
+  finishRun: vi.fn(),
+  recordBlockedRun: vi.fn(),
+  getHistory: vi.fn(),
 }));
 
 vi.mock("../src/services/batch-retirement/executor.js", () => ({
@@ -31,6 +35,26 @@ vi.mock("../src/services/pool-accounting/service.js", () => ({
   PoolAccountingService: class {
     getMonthlySummary(month: string) {
       return mocks.getMonthlySummary(month);
+    }
+  },
+}));
+
+vi.mock("../src/services/reconciliation-run-history/service.js", () => ({
+  ReconciliationRunHistoryService: class {
+    startRun(input: unknown) {
+      return mocks.startRun(input);
+    }
+
+    finishRun(runId: string, input: unknown) {
+      return mocks.finishRun(runId, input);
+    }
+
+    recordBlockedRun(input: unknown) {
+      return mocks.recordBlockedRun(input);
+    }
+
+    getHistory(input: unknown) {
+      return mocks.getHistory(input);
     }
   },
 }));
@@ -102,6 +126,16 @@ describe("runMonthlyReconciliationTool", () => {
       lastContributionAt: "2026-03-01T00:00:00.000Z",
       contributors: [],
     });
+    mocks.startRun.mockResolvedValue({
+      id: "reconcile_run_1",
+    });
+    mocks.finishRun.mockResolvedValue({
+      id: "reconcile_run_1",
+    });
+    mocks.recordBlockedRun.mockResolvedValue({
+      id: "reconcile_blocked_1",
+    });
+    mocks.getHistory.mockResolvedValue([]);
   });
 
   it("runs all-customer sync before monthly batch by default", async () => {

@@ -10,10 +10,16 @@ import {
 } from "../services/subscription/pool-sync.js";
 import { loadConfig } from "../config.js";
 import { calculateProtocolFee } from "../services/batch-retirement/fee.js";
+import { ReconciliationRunHistoryService } from "../services/reconciliation-run-history/service.js";
+import type {
+  ReconciliationRunStatus,
+  ReconciliationRunSyncSummary,
+} from "../services/reconciliation-run-history/types.js";
 
 const executor = new MonthlyBatchRetirementExecutor();
 const poolAccounting = new PoolAccountingService();
 const poolSync = new SubscriptionPoolSyncService();
+const reconciliationHistory = new ReconciliationRunHistoryService();
 const MONTH_REGEX = /^\d{4}-\d{2}$/;
 const activeReconciliationLocks = new Set<string>();
 
@@ -90,6 +96,35 @@ async function withTimeout<T>(
       clearTimeout(timeoutId);
     }
   }
+}
+
+function toReconciliationSyncSummary(
+  syncScope: SyncScope,
+  result?: SubscriptionPoolSyncResult
+): ReconciliationRunSyncSummary {
+  if (!result) {
+    return {
+      scope: syncScope,
+      fetchedInvoiceCount: 0,
+      processedInvoiceCount: 0,
+      syncedCount: 0,
+      duplicateCount: 0,
+      skippedCount: 0,
+    };
+  }
+
+  return {
+    scope: result.scope,
+    fetchedInvoiceCount: result.fetchedInvoiceCount,
+    processedInvoiceCount: result.processedInvoiceCount,
+    syncedCount: result.syncedCount,
+    duplicateCount: result.duplicateCount,
+    skippedCount: result.skippedCount,
+    truncated: result.truncated,
+    hasMore: result.hasMore,
+    pageCount: result.pageCount,
+    maxPages: result.maxPages,
+  };
 }
 
 function formatUsd(cents: number): string {
@@ -502,12 +537,97 @@ export async function getMonthlyReconciliationStatusTool(
   }
 }
 
+export async function getMonthlyReconciliationRunHistoryTool(
+  month?: string,
+  status?: ReconciliationRunStatus,
+  creditType?: "carbon" | "biodiversity",
+  limit?: number
+) {
+  try {
+    const records = await reconciliationHistory.getHistory({
+      month,
+      status,
+      creditType,
+      limit,
+      newestFirst: true,
+    });
+
+    const lines: string[] = [
+      "## Monthly Reconciliation Run History",
+      "",
+      "| Filter | Value |",
+      "|--------|-------|",
+      `| Month | ${month || "all"} |`,
+      `| Status | ${status || "all"} |`,
+      `| Credit Type | ${creditType || "all"} |`,
+      `| Returned Records | ${records.length} |`,
+    ];
+
+    if (records.length === 0) {
+      lines.push("", "No reconciliation runs matched the provided filters.");
+      return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+    }
+
+    lines.push(
+      "",
+      "| Started At | Finished At | ID | Month | Status | Batch Status | Mode | Preflight | Sync Scope | Credit Type | Sync Summary |",
+      "|------------|-------------|----|-------|--------|--------------|------|-----------|------------|-------------|--------------|",
+      ...records.map((record) => {
+        const syncSummary = record.sync
+          ? `${record.sync.syncedCount}/${record.sync.processedInvoiceCount} synced, ${record.sync.fetchedInvoiceCount} fetched${record.sync.truncated ? ", truncated" : ""}`
+          : "N/A";
+
+        return `| ${record.startedAt} | ${record.finishedAt || "N/A"} | ${record.id} | ${record.month} | ${record.status} | ${record.batchStatus} | ${record.executionMode} | ${record.preflightOnly ? "Yes" : "No"} | ${record.syncScope} | ${record.creditType || "all"} | ${syncSummary} |`;
+      })
+    );
+
+    return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown reconciliation run history error";
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Reconciliation run history query failed: ${message}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
 export async function runMonthlyReconciliationTool(
   input: RunMonthlyReconciliationInput
 ) {
   const syncScope = input.syncScope || "all_customers";
+  const executionMode = input.dryRun === false ? "live" : "dry_run";
+  const runStartInput = {
+    month: input.month,
+    creditType: input.creditType,
+    syncScope,
+    executionMode,
+    preflightOnly: Boolean(input.preflightOnly),
+    force: Boolean(input.force),
+  } as const;
   const lockKey = reconciliationLockKey(input.month, input.creditType);
   if (!acquireReconciliationLock(lockKey)) {
+    let blockedRunId: string | undefined;
+    try {
+      blockedRunId = (
+        await reconciliationHistory.recordBlockedRun({
+          ...runStartInput,
+          batchStatus: "blocked_in_progress",
+          message:
+            "A reconciliation run for this month/credit type is already in progress.",
+        })
+      ).id;
+    } catch {
+      // Reconciliation execution should not fail if audit logging is unavailable.
+    }
+
     const lines: string[] = [
       "## Monthly Reconciliation",
       "",
@@ -517,6 +637,7 @@ export async function runMonthlyReconciliationTool(
       `| Sync Scope | ${syncScope} |`,
       `| Credit Type | ${input.creditType || "all"} |`,
       "| Batch Status | blocked_in_progress |",
+      `| Reconciliation Run ID | ${blockedRunId || "N/A"} |`,
       "",
       "A reconciliation run for this month/credit type is already in progress. Wait for it to finish, then retry.",
     ];
@@ -526,7 +647,16 @@ export async function runMonthlyReconciliationTool(
     };
   }
 
+  let runId: string | undefined;
+  let syncResult: SubscriptionPoolSyncResult | undefined;
+
   try {
+    try {
+      runId = (await reconciliationHistory.startRun(runStartInput)).id;
+    } catch {
+      // Reconciliation execution should not fail if audit logging is unavailable.
+    }
+
     const syncTimeoutMs = resolveTimeoutMs(
       input.syncTimeoutMs,
       "sync_timeout_ms"
@@ -536,7 +666,6 @@ export async function runMonthlyReconciliationTool(
       "batch_timeout_ms"
     );
 
-    let syncResult: SubscriptionPoolSyncResult | undefined;
     if (syncScope === "customer") {
       syncResult = await withTimeout(
         poolSync.syncPaidInvoices({
@@ -567,6 +696,18 @@ export async function runMonthlyReconciliationTool(
       syncResult?.truncated &&
       !input.allowPartialSync
     ) {
+      if (runId) {
+        await reconciliationHistory
+          .finishRun(runId, {
+            status: "blocked",
+            batchStatus: "blocked_partial_sync",
+            sync: toReconciliationSyncSummary(syncScope, syncResult),
+            message:
+              "All-customer invoice sync was truncated by invoice_max_pages.",
+          })
+          .catch(() => undefined);
+      }
+
       const lines: string[] = [
         "## Monthly Reconciliation",
         "",
@@ -575,6 +716,7 @@ export async function runMonthlyReconciliationTool(
         `| Month | ${input.month} |`,
         `| Sync Scope | ${syncScope} |`,
         "| Batch Status | blocked_partial_sync |",
+        `| Reconciliation Run ID | ${runId || "N/A"} |`,
         "",
         "### Contribution Sync",
         "",
@@ -604,6 +746,18 @@ export async function runMonthlyReconciliationTool(
       ]);
 
       if (latestExecution?.status !== "dry_run") {
+        if (runId) {
+          await reconciliationHistory
+            .finishRun(runId, {
+              status: "blocked",
+              batchStatus: "blocked_preflight",
+              sync: toReconciliationSyncSummary(syncScope, syncResult),
+              message:
+                "Latest execution is not dry_run, so live execution preflight was blocked.",
+            })
+            .catch(() => undefined);
+        }
+
         const lines: string[] = [
           "## Monthly Reconciliation",
           "",
@@ -612,6 +766,7 @@ export async function runMonthlyReconciliationTool(
           `| Month | ${input.month} |`,
           `| Sync Scope | ${syncScope} |`,
           "| Batch Status | blocked_preflight |",
+          `| Reconciliation Run ID | ${runId || "N/A"} |`,
           "",
           "### Contribution Sync",
           "",
@@ -631,6 +786,18 @@ export async function runMonthlyReconciliationTool(
         monthSummary.lastContributionAt &&
         latestExecution.executedAt.localeCompare(monthSummary.lastContributionAt) < 0
       ) {
+        if (runId) {
+          await reconciliationHistory
+            .finishRun(runId, {
+              status: "blocked",
+              batchStatus: "blocked_preflight_stale_dry_run",
+              sync: toReconciliationSyncSummary(syncScope, syncResult),
+              message:
+                "Latest dry_run record is older than latest contribution.",
+            })
+            .catch(() => undefined);
+        }
+
         const lines: string[] = [
           "## Monthly Reconciliation",
           "",
@@ -639,6 +806,7 @@ export async function runMonthlyReconciliationTool(
           `| Month | ${input.month} |`,
           `| Sync Scope | ${syncScope} |`,
           "| Batch Status | blocked_preflight_stale_dry_run |",
+          `| Reconciliation Run ID | ${runId || "N/A"} |`,
           "",
           "### Contribution Sync",
           "",
@@ -656,6 +824,17 @@ export async function runMonthlyReconciliationTool(
     }
 
     if (input.preflightOnly) {
+      if (runId) {
+        await reconciliationHistory
+          .finishRun(runId, {
+            status: "completed",
+            batchStatus: "preflight_ok",
+            sync: toReconciliationSyncSummary(syncScope, syncResult),
+            message: "Preflight-only mode completed successfully.",
+          })
+          .catch(() => undefined);
+      }
+
       const lines: string[] = [
         "## Monthly Reconciliation",
         "",
@@ -665,6 +844,7 @@ export async function runMonthlyReconciliationTool(
         `| Sync Scope | ${syncScope} |`,
         `| Intended Execution Mode | ${input.dryRun === false ? "live" : "dry_run"} |`,
         "| Batch Status | preflight_ok |",
+        `| Reconciliation Run ID | ${runId || "N/A"} |`,
         "",
         "### Contribution Sync",
         "",
@@ -693,6 +873,20 @@ export async function runMonthlyReconciliationTool(
       "Monthly batch execution"
     );
 
+    const finalStatus: Exclude<ReconciliationRunStatus, "in_progress"> =
+      batchResult.status === "failed" ? "failed" : "completed";
+    if (runId) {
+      await reconciliationHistory
+        .finishRun(runId, {
+          status: finalStatus,
+          batchStatus: batchResult.status,
+          sync: toReconciliationSyncSummary(syncScope, syncResult),
+          message: batchResult.message,
+          error: batchResult.status === "failed" ? batchResult.message : undefined,
+        })
+        .catch(() => undefined);
+    }
+
     const lines: string[] = [
       "## Monthly Reconciliation",
       "",
@@ -701,6 +895,7 @@ export async function runMonthlyReconciliationTool(
       `| Month | ${input.month} |`,
       `| Sync Scope | ${syncScope} |`,
       `| Batch Status | ${batchResult.status} |`,
+      `| Reconciliation Run ID | ${runId || "N/A"} |`,
       "",
       "### Contribution Sync",
       "",
@@ -717,6 +912,19 @@ export async function runMonthlyReconciliationTool(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown reconciliation error";
+
+    if (runId) {
+      await reconciliationHistory
+        .finishRun(runId, {
+          status: "failed",
+          batchStatus: "error",
+          sync: toReconciliationSyncSummary(syncScope, syncResult),
+          message,
+          error: message,
+        })
+        .catch(() => undefined);
+    }
+
     return {
       content: [
         {
