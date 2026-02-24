@@ -149,8 +149,15 @@ function summarizeMonth(
   >();
 
   let totalUsdCents = 0;
+  let lastContributionAt: string | undefined;
   for (const record of filtered) {
     totalUsdCents += record.amountUsdCents;
+    if (
+      !lastContributionAt ||
+      record.contributedAt.localeCompare(lastContributionAt) > 0
+    ) {
+      lastContributionAt = record.contributedAt;
+    }
     const existing = contributorMap.get(record.userId) || {
       userId: record.userId,
       email: record.email,
@@ -180,6 +187,7 @@ function summarizeMonth(
     uniqueContributors: contributors.length,
     totalUsdCents,
     totalUsd: toUsd(totalUsdCents),
+    lastContributionAt,
     contributors,
   };
 }

@@ -67,6 +67,7 @@ export interface MonthlyPoolSummary {
   uniqueContributors: number;
   totalUsdCents: number;
   totalUsd: number;
+  lastContributionAt?: string;
   contributors: MonthlyContributorAggregate[];
 }
 

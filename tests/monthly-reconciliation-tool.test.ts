@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   runMonthlyBatch: vi.fn(),
   getExecutionHistory: vi.fn(),
   syncPaidInvoices: vi.fn(),
+  getMonthlySummary: vi.fn(),
 }));
 
 vi.mock("../src/services/batch-retirement/executor.js", () => ({
@@ -22,6 +23,14 @@ vi.mock("../src/services/subscription/pool-sync.js", () => ({
   SubscriptionPoolSyncService: class {
     syncPaidInvoices(input: unknown) {
       return mocks.syncPaidInvoices(input);
+    }
+  },
+}));
+
+vi.mock("../src/services/pool-accounting/service.js", () => ({
+  PoolAccountingService: class {
+    getMonthlySummary(month: string) {
+      return mocks.getMonthlySummary(month);
     }
   },
 }));
@@ -84,6 +93,15 @@ describe("runMonthlyReconciliationTool", () => {
         executedAt: "2026-03-31T12:00:00.000Z",
       },
     ]);
+    mocks.getMonthlySummary.mockResolvedValue({
+      month: "2026-03",
+      contributionCount: 2,
+      uniqueContributors: 2,
+      totalUsdCents: 600,
+      totalUsd: 6,
+      lastContributionAt: "2026-03-01T00:00:00.000Z",
+      contributors: [],
+    });
   });
 
   it("runs all-customer sync before monthly batch by default", async () => {
@@ -288,6 +306,45 @@ describe("runMonthlyReconciliationTool", () => {
         dryRun: false,
       })
     );
+  });
+
+  it("blocks live execution when latest dry-run is stale versus contributions", async () => {
+    mocks.getExecutionHistory.mockResolvedValueOnce([
+      {
+        id: "batch_dry_old",
+        month: "2026-03",
+        creditType: undefined,
+        dryRun: true,
+        status: "dry_run",
+        reason: "plan",
+        budgetUsdCents: 300,
+        spentMicro: "0",
+        spentDenom: "USDC",
+        retiredQuantity: "0.000000",
+        executedAt: "2026-03-10T00:00:00.000Z",
+      },
+    ]);
+    mocks.getMonthlySummary.mockResolvedValueOnce({
+      month: "2026-03",
+      contributionCount: 3,
+      uniqueContributors: 2,
+      totalUsdCents: 900,
+      totalUsd: 9,
+      lastContributionAt: "2026-03-20T00:00:00.000Z",
+      contributors: [],
+    });
+
+    const result = await runMonthlyReconciliationTool({
+      month: "2026-03",
+      dryRun: false,
+    });
+    const text = responseText(result);
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain("| Batch Status | blocked_preflight_stale_dry_run |");
+    expect(text).toContain("latest `dry_run` (2026-03-10T00:00:00.000Z)");
+    expect(text).toContain("latest contribution (2026-03-20T00:00:00.000Z)");
+    expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
   });
 
   it("allows live execution without latest dry-run when override is enabled", async () => {

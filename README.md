@@ -263,6 +263,7 @@ Supports all `run_monthly_batch_retirement` execution parameters plus sync contr
 - `allow_execute_without_dry_run` (default `false`) to allow live execution without a latest prior dry-run for the same month/credit type.
 
 All-customer sync output now reports whether Stripe pagination was truncated by the `invoice_max_pages` cap so operators can rerun with a higher limit when needed.
+Live execution preflight also requires the latest record for that month/credit type to be a fresh `dry_run` (not older than the latest contribution), unless explicitly overridden.
 
 **When it's used:** Monthly close/reconciliation where operators want deterministic “sync then run batch” execution with one tool invocation.
 

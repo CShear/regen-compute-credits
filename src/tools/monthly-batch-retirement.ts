@@ -499,14 +499,17 @@ export async function runMonthlyReconciliationTool(
     }
 
     if (input.dryRun === false && !input.allowExecuteWithoutDryRun) {
-      const latestExecution = (
-        await executor.getExecutionHistory({
-          month: input.month,
-          creditType: input.creditType,
-          limit: 1,
-          newestFirst: true,
-        })
-      )[0];
+      const [latestExecution, monthSummary] = await Promise.all([
+        executor
+          .getExecutionHistory({
+            month: input.month,
+            creditType: input.creditType,
+            limit: 1,
+            newestFirst: true,
+          })
+          .then((records) => records[0]),
+        poolAccounting.getMonthlySummary(input.month),
+      ]);
 
       if (latestExecution?.status !== "dry_run") {
         const lines: string[] = [
@@ -524,6 +527,33 @@ export async function runMonthlyReconciliationTool(
           "",
           `Live execution was blocked because the latest execution state is \`${latestExecution?.status || "none"}\`, not \`dry_run\`.`,
           "Run with `dry_run=true` first, then re-run with `dry_run=false`, or set `allow_execute_without_dry_run=true` to override.",
+        ];
+
+        return {
+          content: [{ type: "text" as const, text: lines.join("\n") }],
+          isError: true,
+        };
+      }
+
+      if (
+        monthSummary.lastContributionAt &&
+        latestExecution.executedAt.localeCompare(monthSummary.lastContributionAt) < 0
+      ) {
+        const lines: string[] = [
+          "## Monthly Reconciliation",
+          "",
+          "| Field | Value |",
+          "|-------|-------|",
+          `| Month | ${input.month} |`,
+          `| Sync Scope | ${syncScope} |`,
+          "| Batch Status | blocked_preflight_stale_dry_run |",
+          "",
+          "### Contribution Sync",
+          "",
+          renderSyncSummary(syncScope, syncResult),
+          "",
+          `Live execution was blocked because the latest \`dry_run\` (${latestExecution.executedAt}) is older than the latest contribution (${monthSummary.lastContributionAt}).`,
+          "Run a fresh `dry_run=true` and then re-run live execution, or set `allow_execute_without_dry_run=true` to override.",
         ];
 
         return {
