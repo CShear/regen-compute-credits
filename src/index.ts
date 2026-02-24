@@ -637,6 +637,16 @@ server.tool(
       .int()
       .optional()
       .describe("Max pages for account-wide sync (1-50)"),
+    sync_timeout_ms: z
+      .number()
+      .int()
+      .optional()
+      .describe("Optional timeout for contribution sync phase (1-300000 ms)"),
+    batch_timeout_ms: z
+      .number()
+      .int()
+      .optional()
+      .describe("Optional timeout for monthly batch execution phase (1-300000 ms)"),
   },
   {
     readOnlyHint: false,
@@ -661,6 +671,8 @@ server.tool(
     user_id,
     invoice_limit,
     invoice_max_pages,
+    sync_timeout_ms,
+    batch_timeout_ms,
   }) => {
     return runMonthlyReconciliationTool({
       month,
@@ -679,6 +691,8 @@ server.tool(
       userId: user_id,
       invoiceLimit: invoice_limit,
       invoiceMaxPages: invoice_max_pages,
+      syncTimeoutMs: sync_timeout_ms,
+      batchTimeoutMs: batch_timeout_ms,
     });
   }
 );

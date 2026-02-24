@@ -185,6 +185,62 @@ describe("runMonthlyReconciliationTool", () => {
     expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
   });
 
+  it("returns timeout error when contribution sync exceeds sync_timeout_ms", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.syncPaidInvoices.mockReturnValueOnce(new Promise(() => {}));
+
+      const resultPromise = runMonthlyReconciliationTool({
+        month: "2026-03",
+        syncTimeoutMs: 5,
+      });
+      await vi.advanceTimersByTimeAsync(5);
+      const result = await resultPromise;
+
+      expect(result.isError).toBe(true);
+      expect(responseText(result)).toContain(
+        "Monthly reconciliation failed: Contribution sync timed out after 5ms"
+      );
+      expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns timeout error when batch phase exceeds batch_timeout_ms", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.runMonthlyBatch.mockReturnValueOnce(new Promise(() => {}));
+
+      const resultPromise = runMonthlyReconciliationTool({
+        month: "2026-03",
+        batchTimeoutMs: 5,
+      });
+      await vi.advanceTimersByTimeAsync(5);
+      const result = await resultPromise;
+
+      expect(result.isError).toBe(true);
+      expect(responseText(result)).toContain(
+        "Monthly reconciliation failed: Monthly batch execution timed out after 5ms"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("validates timeout parameter bounds", async () => {
+    const result = await runMonthlyReconciliationTool({
+      month: "2026-03",
+      syncTimeoutMs: 0,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(responseText(result)).toContain(
+      "Monthly reconciliation failed: sync_timeout_ms must be an integer between 1 and 300000"
+    );
+    expect(mocks.syncPaidInvoices).not.toHaveBeenCalled();
+  });
+
   it("blocks batch execution when all-customer sync is truncated", async () => {
     mocks.syncPaidInvoices.mockResolvedValueOnce({
       scope: "all_customers",

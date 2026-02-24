@@ -28,6 +28,8 @@ export interface RunMonthlyReconciliationInput {
   force?: boolean;
   allowPartialSync?: boolean;
   allowExecuteWithoutDryRun?: boolean;
+  syncTimeoutMs?: number;
+  batchTimeoutMs?: number;
   reason?: string;
   jurisdiction?: string;
   syncScope?: SyncScope;
@@ -55,6 +57,39 @@ function acquireReconciliationLock(lockKey: string): boolean {
 
 function releaseReconciliationLock(lockKey: string): void {
   activeReconciliationLocks.delete(lockKey);
+}
+
+function resolveTimeoutMs(value: number | undefined, label: string): number | undefined {
+  if (typeof value === "undefined") return undefined;
+  if (!Number.isInteger(value) || value < 1 || value > 300_000) {
+    throw new Error(`${label} must be an integer between 1 and 300000`);
+  }
+  return value;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number | undefined,
+  label: string
+): Promise<T> {
+  if (!timeoutMs) {
+    return promise;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function formatUsd(cents: number): string {
@@ -492,22 +527,39 @@ export async function runMonthlyReconciliationTool(
   }
 
   try {
+    const syncTimeoutMs = resolveTimeoutMs(
+      input.syncTimeoutMs,
+      "sync_timeout_ms"
+    );
+    const batchTimeoutMs = resolveTimeoutMs(
+      input.batchTimeoutMs,
+      "batch_timeout_ms"
+    );
+
     let syncResult: SubscriptionPoolSyncResult | undefined;
     if (syncScope === "customer") {
-      syncResult = await poolSync.syncPaidInvoices({
-        month: input.month,
-        email: input.email,
-        customerId: input.customerId,
-        userId: input.userId,
-        limit: input.invoiceLimit,
-      });
+      syncResult = await withTimeout(
+        poolSync.syncPaidInvoices({
+          month: input.month,
+          email: input.email,
+          customerId: input.customerId,
+          userId: input.userId,
+          limit: input.invoiceLimit,
+        }),
+        syncTimeoutMs,
+        "Contribution sync"
+      );
     } else if (syncScope === "all_customers") {
-      syncResult = await poolSync.syncPaidInvoices({
-        month: input.month,
-        limit: input.invoiceLimit,
-        maxPages: input.invoiceMaxPages,
-        allCustomers: true,
-      });
+      syncResult = await withTimeout(
+        poolSync.syncPaidInvoices({
+          month: input.month,
+          limit: input.invoiceLimit,
+          maxPages: input.invoiceMaxPages,
+          allCustomers: true,
+        }),
+        syncTimeoutMs,
+        "Contribution sync"
+      );
     }
 
     if (
@@ -626,16 +678,20 @@ export async function runMonthlyReconciliationTool(
       };
     }
 
-    const batchResult = await executor.runMonthlyBatch({
-      month: input.month,
-      creditType: input.creditType,
-      maxBudgetUsd: input.maxBudgetUsd,
-      dryRun: input.dryRun,
-      force: input.force,
-      reason: input.reason,
-      jurisdiction: input.jurisdiction,
-      paymentDenom: "USDC",
-    });
+    const batchResult = await withTimeout(
+      executor.runMonthlyBatch({
+        month: input.month,
+        creditType: input.creditType,
+        maxBudgetUsd: input.maxBudgetUsd,
+        dryRun: input.dryRun,
+        force: input.force,
+        reason: input.reason,
+        jurisdiction: input.jurisdiction,
+        paymentDenom: "USDC",
+      }),
+      batchTimeoutMs,
+      "Monthly batch execution"
+    );
 
     const lines: string[] = [
       "## Monthly Reconciliation",
