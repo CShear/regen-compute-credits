@@ -18,6 +18,8 @@ export interface Config {
   walletMnemonic: string | undefined;
   paymentProvider: "crypto" | "stripe";
   defaultJurisdiction: string;
+  certificateBaseUrl: string;
+  certificateOutputDir: string;
   protocolFeeBps: number;
 
   // ecoBridge integration (Phase 1.5)
@@ -138,6 +140,11 @@ export function loadConfig(): Config {
     paymentProvider:
       (process.env.REGEN_PAYMENT_PROVIDER as "crypto" | "stripe") || "crypto",
     defaultJurisdiction: process.env.REGEN_DEFAULT_JURISDICTION || "US",
+    certificateBaseUrl:
+      process.env.REGEN_CERTIFICATE_BASE_URL ||
+      "https://regen.network/certificate",
+    certificateOutputDir:
+      process.env.REGEN_CERTIFICATE_OUTPUT_DIR || "data/certificates",
     protocolFeeBps: parseProtocolFeeBps(process.env.REGEN_PROTOCOL_FEE_BPS),
 
     ecoBridgeApiUrl:

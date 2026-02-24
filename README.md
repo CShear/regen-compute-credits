@@ -217,6 +217,14 @@ Supports:
 
 **When it's used:** Running the monthly pooled buy-and-retire process from aggregated subscription funds.
 
+### `publish_subscriber_certificate_page`
+
+Generates a user-facing HTML certificate page for a subscriber's monthly fractional attribution record and returns:
+- a public URL (based on `REGEN_CERTIFICATE_BASE_URL`), and
+- the local generated file path (under `REGEN_CERTIFICATE_OUTPUT_DIR`).
+
+**When it's used:** Publishing shareable certificate pages for dashboards, receipts, and attribution history links.
+
 ### `retire_credits`
 
 Retires ecocredits on Regen Network. Operates in two modes:
@@ -348,6 +356,9 @@ export STRIPE_PRICE_ID_IMPACT=price_...
 export REGEN_POOL_ACCOUNTING_PATH=./data/pool-accounting-ledger.json
 # optional custom history path for monthly batch executions
 export REGEN_BATCH_EXECUTIONS_PATH=./data/monthly-batch-executions.json
+# optional subscriber certificate frontend settings
+export REGEN_CERTIFICATE_BASE_URL=https://regen.network/certificate
+export REGEN_CERTIFICATE_OUTPUT_DIR=./data/certificates
 # optional protocol fee basis points for monthly pool budgets (800-1200, default 1000)
 export REGEN_PROTOCOL_FEE_BPS=1000
 # optional batch credit mix policy when credit_type is omitted: balanced | off

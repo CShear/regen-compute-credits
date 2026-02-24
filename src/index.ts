@@ -19,6 +19,7 @@ import {
   getSubscriberAttributionCertificateTool,
   getSubscriberImpactDashboardTool,
 } from "./tools/attribution-dashboard.js";
+import { publishSubscriberCertificatePageTool } from "./tools/certificate-frontend.js";
 import { loadConfig, isWalletConfigured } from "./config.js";
 import {
   fetchRegistry,
@@ -106,6 +107,7 @@ const server = new McpServer(
       "6. record_pool_contribution / get_pool_accounting_summary — track monthly subscription pool accounting",
       "7. run_monthly_batch_retirement — execute the monthly pooled credit retirement batch",
       "8. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
+      "9. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
       "",
       ...(walletMode
         ? [
@@ -118,6 +120,7 @@ const server = new McpServer(
       "Pool accounting tools support per-user contribution tracking and monthly aggregation summaries.",
       "Monthly batch retirement uses pool accounting totals to execute one on-chain retirement per month.",
       "Subscriber dashboard tools expose fractional attribution and impact history per user.",
+      "Certificate frontend tool publishes shareable subscriber certificate pages to a configurable URL/path.",
     ].join("\n"),
   }
 );
@@ -499,6 +502,43 @@ server.tool(
   },
   async ({ month, user_id, email, customer_id }) => {
     return getSubscriberAttributionCertificateTool(
+      month,
+      user_id,
+      email,
+      customer_id
+    );
+  }
+);
+
+// Tool: Publish subscriber certificate frontend page
+server.tool(
+  "publish_subscriber_certificate_page",
+  "Publishes a user-facing HTML certificate page for a subscriber's monthly fractional attribution, returning both a public URL and local file path.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ month, user_id, email, customer_id }) => {
+    return publishSubscriberCertificatePageTool(
       month,
       user_id,
       email,
