@@ -167,6 +167,60 @@ describe("runMonthlyReconciliationTool", () => {
     expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
   });
 
+  it("blocks batch execution when all-customer sync is truncated", async () => {
+    mocks.syncPaidInvoices.mockResolvedValueOnce({
+      scope: "all_customers",
+      month: "2026-03",
+      truncated: true,
+      hasMore: true,
+      pageCount: 3,
+      maxPages: 3,
+      fetchedInvoiceCount: 50,
+      processedInvoiceCount: 50,
+      syncedCount: 50,
+      duplicateCount: 0,
+      skippedCount: 0,
+      records: [],
+    });
+
+    const result = await runMonthlyReconciliationTool({ month: "2026-03" });
+    const text = responseText(result);
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain("| Batch Status | blocked_partial_sync |");
+    expect(text).toContain("| Fetch Truncated | Yes |");
+    expect(text).toContain("allow_partial_sync=true");
+    expect(mocks.runMonthlyBatch).not.toHaveBeenCalled();
+  });
+
+  it("allows continuing with truncated all-customer sync when override is set", async () => {
+    mocks.syncPaidInvoices.mockResolvedValueOnce({
+      scope: "all_customers",
+      month: "2026-03",
+      truncated: true,
+      hasMore: true,
+      pageCount: 3,
+      maxPages: 3,
+      fetchedInvoiceCount: 50,
+      processedInvoiceCount: 50,
+      syncedCount: 50,
+      duplicateCount: 0,
+      skippedCount: 0,
+      records: [],
+    });
+
+    const result = await runMonthlyReconciliationTool({
+      month: "2026-03",
+      allowPartialSync: true,
+    });
+    const text = responseText(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(text).toContain("| Batch Status | dry_run |");
+    expect(text).toContain("| Fetch Truncated | Yes |");
+    expect(mocks.runMonthlyBatch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns monthly batch execution history table", async () => {
     const result = await getMonthlyBatchExecutionHistoryTool(
       "2026-03",

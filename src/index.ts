@@ -581,6 +581,13 @@ server.tool(
       .optional()
       .default(false)
       .describe("If true, allows rerunning a month even if a prior success exists"),
+    allow_partial_sync: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "If true, allows batch execution to continue when all-customer sync is truncated by invoice_max_pages"
+      ),
     reason: z
       .string()
       .optional()
@@ -629,6 +636,7 @@ server.tool(
     max_budget_usd,
     dry_run,
     force,
+    allow_partial_sync,
     reason,
     jurisdiction,
     sync_scope,
@@ -644,6 +652,7 @@ server.tool(
       maxBudgetUsd: max_budget_usd,
       dryRun: dry_run,
       force,
+      allowPartialSync: allow_partial_sync,
       reason,
       jurisdiction,
       syncScope: sync_scope,

@@ -258,7 +258,8 @@ Runs an operator workflow in one call:
 Supports all `run_monthly_batch_retirement` execution parameters plus sync controls:
 - `sync_scope`: `none` | `customer` | `all_customers` (default),
 - `email` / `customer_id` / `user_id` for customer-scoped sync,
-- `invoice_limit` and `invoice_max_pages` for Stripe pagination control.
+- `invoice_limit` and `invoice_max_pages` for Stripe pagination control,
+- `allow_partial_sync` (default `false`) to explicitly allow execution after truncated all-customer sync.
 
 All-customer sync output now reports whether Stripe pagination was truncated by the `invoice_max_pages` cap so operators can rerun with a higher limit when needed.
 

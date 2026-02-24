@@ -24,6 +24,7 @@ export interface RunMonthlyReconciliationInput {
   maxBudgetUsd?: number;
   dryRun?: boolean;
   force?: boolean;
+  allowPartialSync?: boolean;
   reason?: string;
   jurisdiction?: string;
   syncScope?: SyncScope;
@@ -466,6 +467,34 @@ export async function runMonthlyReconciliationTool(
         maxPages: input.invoiceMaxPages,
         allCustomers: true,
       });
+    }
+
+    if (
+      syncScope === "all_customers" &&
+      syncResult?.truncated &&
+      !input.allowPartialSync
+    ) {
+      const lines: string[] = [
+        "## Monthly Reconciliation",
+        "",
+        "| Field | Value |",
+        "|-------|-------|",
+        `| Month | ${input.month} |`,
+        `| Sync Scope | ${syncScope} |`,
+        "| Batch Status | blocked_partial_sync |",
+        "",
+        "### Contribution Sync",
+        "",
+        renderSyncSummary(syncScope, syncResult),
+        "",
+        "Batch execution was skipped because all-customer invoice sync was truncated by `invoice_max_pages` and may be incomplete.",
+        "Increase `invoice_max_pages` and rerun, or set `allow_partial_sync=true` to override (not recommended).",
+      ];
+
+      return {
+        content: [{ type: "text" as const, text: lines.join("\n") }],
+        isError: true,
+      };
     }
 
     const batchResult = await executor.runMonthlyBatch({
