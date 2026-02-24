@@ -1,4 +1,5 @@
 import { getRetirementById } from "../services/indexer.js";
+import { parseAttributedReason } from "../services/identity.js";
 
 export async function getRetirementCertificate(retirementId: string) {
   try {
@@ -16,6 +17,8 @@ export async function getRetirementCertificate(retirementId: string) {
       };
     }
 
+    const parsedReason = parseAttributedReason(retirement.reason);
+
     const text = [
       `## Retirement Certificate`,
       ``,
@@ -26,15 +29,31 @@ export async function getRetirementCertificate(retirementId: string) {
       `| Credit Batch | ${retirement.batchDenom} |`,
       `| Beneficiary | ${retirement.owner} |`,
       `| Jurisdiction | ${retirement.jurisdiction} |`,
-      `| Reason | ${retirement.reason || "Ecological regeneration"} |`,
+      `| Reason | ${parsedReason.reasonText} |`,
       `| Timestamp | ${retirement.timestamp} |`,
       `| Block Height | ${retirement.blockHeight} |`,
       `| Transaction Hash | ${retirement.txHash} |`,
-      ``,
-      `**On-chain verification**: This retirement is permanently recorded on Regen Ledger and cannot be altered or reversed.`,
-    ].join("\n");
+    ];
 
-    return { content: [{ type: "text" as const, text }] };
+    if (parsedReason.identity?.name) {
+      text.push(`| Beneficiary Name | ${parsedReason.identity.name} |`);
+    }
+    if (parsedReason.identity?.email) {
+      text.push(`| Beneficiary Email | ${parsedReason.identity.email} |`);
+    }
+    if (parsedReason.identity?.provider) {
+      text.push(`| Auth Provider | ${parsedReason.identity.provider} |`);
+    }
+    if (parsedReason.identity?.subject) {
+      text.push(`| Auth Subject | ${parsedReason.identity.subject} |`);
+    }
+
+    text.push(
+      ``,
+      `**On-chain verification**: This retirement is permanently recorded on Regen Ledger and cannot be altered or reversed.`
+    );
+
+    return { content: [{ type: "text" as const, text: text.join("\n") }] };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown error occurred";

@@ -1,0 +1,155 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StripeSubscriptionService } from "../src/services/subscription/stripe.js";
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+describe("StripeSubscriptionService", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    process.env = { ...originalEnv };
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    process.env.STRIPE_PAYMENT_METHOD_ID = "pm_env_default";
+    process.env.STRIPE_PRICE_ID_STARTER = "price_starter";
+    process.env.STRIPE_PRICE_ID_GROWTH = "price_growth";
+    process.env.STRIPE_PRICE_ID_IMPACT = "price_impact";
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.unstubAllGlobals();
+  });
+
+  it("creates a customer subscription for the selected tier", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { data: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          id: "cus_123",
+          email: "alice@example.com",
+          name: "Alice",
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { id: "pm_123" }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { id: "cus_123", email: "alice@example.com" })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { data: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          id: "sub_123",
+          status: "active",
+          customer: "cus_123",
+          cancel_at_period_end: false,
+          current_period_end: 1767225600,
+          items: {
+            data: [
+              {
+                id: "si_123",
+                price: { id: "price_growth" },
+              },
+            ],
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new StripeSubscriptionService();
+    const state = await service.ensureSubscription("growth", {
+      email: "alice@example.com",
+      fullName: "Alice",
+      paymentMethodId: "pm_123",
+    });
+
+    expect(state).toMatchObject({
+      customerId: "cus_123",
+      email: "alice@example.com",
+      subscriptionId: "sub_123",
+      status: "active",
+      tierId: "growth",
+      priceId: "price_growth",
+      cancelAtPeriodEnd: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    const [searchUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(searchUrl).toContain("/customers?email=alice%40example.com&limit=1");
+
+    const [, createSubscriptionInit] = fetchMock.mock.calls[5] as [
+      string,
+      RequestInit,
+    ];
+    expect(String(createSubscriptionInit.body)).toContain("price_growth");
+  });
+
+  it("returns status=none when no customer exists for the lookup email", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [] })));
+
+    const service = new StripeSubscriptionService();
+    const state = await service.getSubscriptionState({
+      email: "missing@example.com",
+    });
+
+    expect(state).toEqual({
+      email: "missing@example.com",
+      status: "none",
+      cancelAtPeriodEnd: false,
+    });
+  });
+
+  it("cancels active subscriptions at period end", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          data: [{ id: "cus_123", email: "alice@example.com" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          data: [
+            {
+              id: "sub_123",
+              status: "active",
+              customer: "cus_123",
+              cancel_at_period_end: false,
+              current_period_end: 1767225600,
+              items: { data: [{ id: "si_123", price: { id: "price_starter" } }] },
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          id: "sub_123",
+          status: "active",
+          customer: "cus_123",
+          cancel_at_period_end: true,
+          current_period_end: 1767225600,
+          items: { data: [{ id: "si_123", price: { id: "price_starter" } }] },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new StripeSubscriptionService();
+    const state = await service.cancelSubscription({ email: "alice@example.com" });
+
+    expect(state).toMatchObject({
+      customerId: "cus_123",
+      status: "active",
+      tierId: "starter",
+      cancelAtPeriodEnd: true,
+    });
+
+    const [cancelUrl, cancelInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(cancelUrl).toContain("/subscriptions/sub_123");
+    expect(String(cancelInit.body)).toContain("cancel_at_period_end=true");
+  });
+});

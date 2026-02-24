@@ -6,6 +6,19 @@ import { browseAvailableCredits } from "./tools/credits.js";
 import { getRetirementCertificate } from "./tools/certificates.js";
 import { getImpactSummary } from "./tools/impact.js";
 import { retireCredits } from "./tools/retire.js";
+import {
+  listSubscriptionTiersTool,
+  manageSubscriptionTool,
+} from "./tools/subscriptions.js";
+import {
+  getPoolAccountingSummaryTool,
+  recordPoolContributionTool,
+} from "./tools/pool-accounting.js";
+import { runMonthlyBatchRetirementTool } from "./tools/monthly-batch-retirement.js";
+import {
+  getSubscriberAttributionCertificateTool,
+  getSubscriberImpactDashboardTool,
+} from "./tools/attribution-dashboard.js";
 import { loadConfig, isWalletConfigured } from "./config.js";
 import {
   fetchRegistry,
@@ -89,14 +102,22 @@ const server = new McpServer(
             "2. retire_via_ecobridge — generate a payment link using USDC, ETH, or any supported token",
           ]
         : []),
+      "5. list_subscription_tiers / manage_subscription — manage $1/$3/$5 recurring contribution plans",
+      "6. record_pool_contribution / get_pool_accounting_summary — track monthly subscription pool accounting",
+      "7. run_monthly_batch_retirement — execute the monthly pooled credit retirement batch",
+      "8. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
       "",
       ...(walletMode
         ? [
             "The retire_credits tool executes real on-chain transactions. Credits are permanently retired.",
           ]
         : [
-            "All tools in this server are read-only and safe to call at any time.",
+            "Without a wallet, retire_credits returns marketplace links instead of broadcasting on-chain transactions.",
           ]),
+      "The manage_subscription tool can create, update, or cancel Stripe subscriptions.",
+      "Pool accounting tools support per-user contribution tracking and monthly aggregation summaries.",
+      "Monthly batch retirement uses pool accounting totals to execute one on-chain retirement per month.",
+      "Subscriber dashboard tools expose fractional attribution and impact history per user.",
     ].join("\n"),
   }
 );
@@ -188,12 +209,310 @@ server.tool(
   }
 );
 
+// Tool: List available subscription tiers
+server.tool(
+  "list_subscription_tiers",
+  "Lists recurring contribution tiers for the Regen membership plans ($1/$3/$5 monthly) and shows whether Stripe price IDs are configured for each tier.",
+  {},
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async () => {
+    return listSubscriptionTiersTool();
+  }
+);
+
+// Tool: Create/update/check/cancel Stripe subscription state
+server.tool(
+  "manage_subscription",
+  "Manages customer subscription state for Regen contribution plans. Actions: subscribe to a tier, check current status, or cancel at period end.",
+  {
+    action: z
+      .enum(["subscribe", "status", "cancel"])
+      .describe("Operation to perform: subscribe, status, or cancel"),
+    tier: z
+      .enum(["starter", "growth", "impact"])
+      .optional()
+      .describe("Tier ID for subscribe: starter ($1), growth ($3), impact ($5)"),
+    email: z
+      .string()
+      .optional()
+      .describe("Customer email used for lookup or creation"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Existing Stripe customer ID (optional alternative to email)"),
+    full_name: z
+      .string()
+      .optional()
+      .describe("Customer display name (used when creating Stripe customer)"),
+    payment_method_id: z
+      .string()
+      .optional()
+      .describe("Stripe PaymentMethod ID to set as default for subscriptions"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({ action, tier, email, customer_id, full_name, payment_method_id }) => {
+    return manageSubscriptionTool(
+      action,
+      tier,
+      email,
+      customer_id,
+      full_name,
+      payment_method_id
+    );
+  }
+);
+
+// Tool: Record a contribution entry in the pool accounting ledger
+server.tool(
+  "record_pool_contribution",
+  "Records a contribution event for subscription pool accounting. Tracks per-user contribution ledger entries for monthly aggregation and batch retirement planning.",
+  {
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal stable user ID (optional if customer_id or email is provided)"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email (optional alternative identifier)"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID (optional alternative identifier)"),
+    subscription_id: z
+      .string()
+      .optional()
+      .describe("Stripe subscription ID associated with this contribution"),
+    tier: z
+      .enum(["starter", "growth", "impact"])
+      .optional()
+      .describe("Tier ID; if amount is omitted this determines default amount ($1/$3/$5)"),
+    amount_usd: z
+      .number()
+      .optional()
+      .describe("Contribution amount in USD (decimal), e.g. 3 or 2.5"),
+    amount_usd_cents: z
+      .number()
+      .int()
+      .optional()
+      .describe("Contribution amount in USD cents"),
+    contributed_at: z
+      .string()
+      .optional()
+      .describe("ISO timestamp of the contribution event"),
+    source: z
+      .enum(["subscription", "manual", "adjustment"])
+      .optional()
+      .describe("Contribution source type"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({
+    user_id,
+    email,
+    customer_id,
+    subscription_id,
+    tier,
+    amount_usd,
+    amount_usd_cents,
+    contributed_at,
+    source,
+  }) => {
+    return recordPoolContributionTool({
+      userId: user_id,
+      email,
+      customerId: customer_id,
+      subscriptionId: subscription_id,
+      tierId: tier,
+      amountUsd: amount_usd,
+      amountUsdCents: amount_usd_cents,
+      contributedAt: contributed_at,
+      source,
+    });
+  }
+);
+
+// Tool: Query per-user or monthly pool accounting summaries
+server.tool(
+  "get_pool_accounting_summary",
+  "Returns pool accounting summaries for either a user or a month. Use user identifiers for lifetime/by-month user totals, or pass month for aggregate pool totals.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Month in YYYY-MM format for monthly pool summary"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID for user-specific summary"),
+    email: z
+      .string()
+      .optional()
+      .describe("Email for user-specific summary"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID for user-specific summary"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, user_id, email, customer_id }) => {
+    return getPoolAccountingSummaryTool(month, user_id, email, customer_id);
+  }
+);
+
+// Tool: Execute monthly pooled retirement run
+server.tool(
+  "run_monthly_batch_retirement",
+  "Executes a monthly pooled retirement batch using recorded pool contributions. Supports dry-run planning and real on-chain execution.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format, e.g. 2026-03"),
+    credit_type: z
+      .enum(["carbon", "biodiversity"])
+      .optional()
+      .describe("Optional credit type filter for the batch retirement"),
+    max_budget_usd: z
+      .number()
+      .optional()
+      .describe("Optional max budget in USD for this run"),
+    dry_run: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("If true, plans the batch without broadcasting a transaction"),
+    force: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("If true, allows rerunning a month even if a prior success exists"),
+    reason: z
+      .string()
+      .optional()
+      .describe("Optional retirement reason override"),
+    jurisdiction: z
+      .string()
+      .optional()
+      .describe("Optional retirement jurisdiction override"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({
+    month,
+    credit_type,
+    max_budget_usd,
+    dry_run,
+    force,
+    reason,
+    jurisdiction,
+  }) => {
+    return runMonthlyBatchRetirementTool(
+      month,
+      credit_type,
+      max_budget_usd,
+      dry_run,
+      force,
+      reason,
+      jurisdiction
+    );
+  }
+);
+
+// Tool: User-facing fractional impact dashboard
+server.tool(
+  "get_subscriber_impact_dashboard",
+  "Returns a user-facing dashboard of pooled contribution history and fractional retirement attribution impact.",
+  {
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ user_id, email, customer_id }) => {
+    return getSubscriberImpactDashboardTool(user_id, email, customer_id);
+  }
+);
+
+// Tool: User-facing per-month attribution certificate
+server.tool(
+  "get_subscriber_attribution_certificate",
+  "Returns a user-facing certificate for a subscriber's fractional attribution in a specific monthly pooled retirement batch.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, user_id, email, customer_id }) => {
+    return getSubscriberAttributionCertificateTool(
+      month,
+      user_id,
+      email,
+      customer_id
+    );
+  }
+);
+
 // Tool: Retire credits — either direct on-chain execution or marketplace link
 server.tool(
   "retire_credits",
   walletMode
-    ? "Purchases and retires ecocredits directly on-chain on Regen Network. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits. Credits are permanently retired on-chain in a single transaction. Returns a retirement certificate with on-chain proof."
-    : "Generates a link to retire ecocredits on Regen Network marketplace via credit card. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits for any reason. Credits are permanently retired on-chain with the user's name as beneficiary. No crypto wallet needed. Returns a direct marketplace link and step-by-step instructions.",
+    ? "Purchases and retires ecocredits directly on-chain on Regen Network. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits. Credits are permanently retired on-chain in a single transaction. Supports beneficiary attribution via name/email/OAuth metadata and returns a retirement certificate with on-chain proof."
+    : "Generates a link to retire ecocredits on Regen Network marketplace via credit card. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits for any reason. Credits are permanently retired on-chain with optional identity attribution metadata. No crypto wallet needed. Returns a direct marketplace link and step-by-step instructions.",
   {
     credit_class: z
       .string()
@@ -209,6 +528,18 @@ server.tool(
       .string()
       .optional()
       .describe("Name to appear on the retirement certificate"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Email to attribute to the retirement certificate"),
+    auth_provider: z
+      .string()
+      .optional()
+      .describe("OAuth provider name for identity attribution (e.g., google, github)"),
+    auth_subject: z
+      .string()
+      .optional()
+      .describe("OAuth subject/user ID for identity attribution"),
     jurisdiction: z
       .string()
       .optional()
@@ -226,8 +557,26 @@ server.tool(
     idempotentHint: !walletMode,
     openWorldHint: walletMode,
   },
-  async ({ credit_class, quantity, beneficiary_name, jurisdiction, reason }) => {
-    return retireCredits(credit_class, quantity, beneficiary_name, jurisdiction, reason);
+  async ({
+    credit_class,
+    quantity,
+    beneficiary_name,
+    beneficiary_email,
+    auth_provider,
+    auth_subject,
+    jurisdiction,
+    reason,
+  }) => {
+    return retireCredits(
+      credit_class,
+      quantity,
+      beneficiary_name,
+      jurisdiction,
+      reason,
+      beneficiary_email,
+      auth_provider,
+      auth_subject
+    );
   }
 );
 

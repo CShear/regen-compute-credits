@@ -154,6 +154,65 @@ Shows aggregate ecological impact statistics from Regen Network — live on-chai
 | Kilo-Sheep-Hour (KSH) | Grazing-based stewardship |
 ```
 
+### `list_subscription_tiers`
+
+Lists recurring contribution tiers and configuration status for Stripe price mappings.
+
+**When it's used:** The user wants to see available monthly plans (`$1/$3/$5`) before subscribing.
+
+**Example output:**
+```
+## Subscription Tiers
+
+| Tier | Name | Monthly Price | Description | Stripe Price Config |
+|------|------|---------------|-------------|---------------------|
+| starter | Starter | $1/month | Entry tier for monthly ecological contributions. | Configured |
+| growth | Growth | $3/month | Balanced recurring contribution tier. | Configured |
+| impact | Impact | $5/month | Highest monthly contribution tier. | Configured |
+```
+
+### `manage_subscription`
+
+Creates, updates, checks, or cancels Stripe subscription state for a customer.
+
+**Actions:** `subscribe`, `status`, `cancel`
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `action` | One of `subscribe`, `status`, `cancel`. Required. |
+| `tier` | Plan ID for subscribe: `starter` ($1), `growth` ($3), `impact` ($5). |
+| `email` | Customer email for lookup/creation. |
+| `customer_id` | Existing Stripe customer ID (alternative to email). |
+| `full_name` | Name to use when creating a Stripe customer. |
+| `payment_method_id` | Stripe PaymentMethod to set as default when subscribing. |
+
+### `record_pool_contribution`
+
+Records a contribution event in the pool ledger for per-user accounting and monthly aggregation.
+
+**When it's used:** Internal/admin workflows that ingest paid subscription events into the retirement pool ledger.
+
+### `get_pool_accounting_summary`
+
+Returns either:
+- user-level contribution summary (lifetime + by-month totals), or
+- month-level pool aggregate summary (total amount + contributors).
+
+**When it's used:** Preparing monthly batch retirement inputs and reconciling contributor balances.
+
+### `run_monthly_batch_retirement`
+
+Executes the monthly pooled retirement batch from the contribution ledger.
+
+Supports:
+- `dry_run=true` planning (default, no on-chain transaction),
+- real execution with `dry_run=false`,
+- duplicate-run protection per month (override with `force=true`).
+
+**When it's used:** Running the monthly pooled buy-and-retire process from aggregated subscription funds.
+
 ### `retire_credits`
 
 Retires ecocredits on Regen Network. Operates in two modes:
@@ -170,10 +229,14 @@ When `ECOBRIDGE_ENABLED=true`, the fallback message also suggests `retire_via_ec
 | `credit_class` | Credit class to retire (e.g., 'C01', 'BT01'). Optional. |
 | `quantity` | Number of credits to retire. Optional (defaults to 1). |
 | `beneficiary_name` | Name for the retirement certificate. Optional. |
+| `beneficiary_email` | Email for retirement attribution metadata. Optional. |
+| `auth_provider` | OAuth provider for identity attribution (e.g., `google`, `github`). Optional (requires `auth_subject`). |
+| `auth_subject` | OAuth user subject/ID for attribution metadata. Optional (requires `auth_provider`). |
 | `jurisdiction` | Retirement jurisdiction (ISO 3166-1, e.g., 'US', 'DE'). Optional. |
 | `reason` | Reason for retiring credits (recorded on-chain). Optional. |
 
 **When it's used:** The user wants to take action and actually fund ecological regeneration.
+When provided, identity attribution fields are embedded into retirement reason metadata so `get_retirement_certificate` can display user attribution details later.
 
 ### `browse_ecobridge_tokens`
 
@@ -266,6 +329,24 @@ export REGEN_WALLET_MNEMONIC="your 24 word mnemonic here"
 export REGEN_RPC_URL=https://mainnet.regen.network:26657
 export REGEN_CHAIN_ID=regen-1
 ```
+Stripe-backed authorization/capture is also supported:
+
+```bash
+export REGEN_PAYMENT_PROVIDER=stripe
+export STRIPE_SECRET_KEY=sk_live_...
+export STRIPE_PAYMENT_METHOD_ID=pm_...
+# optional if your payment method is attached to a customer
+export STRIPE_CUSTOMER_ID=cus_...
+export STRIPE_PRICE_ID_STARTER=price_...
+export STRIPE_PRICE_ID_GROWTH=price_...
+export STRIPE_PRICE_ID_IMPACT=price_...
+# optional custom ledger path for pool accounting service
+export REGEN_POOL_ACCOUNTING_PATH=./data/pool-accounting-ledger.json
+# optional custom history path for monthly batch executions
+export REGEN_BATCH_EXECUTIONS_PATH=./data/monthly-batch-executions.json
+```
+
+Note: Stripe mode currently requires USDC-denominated sell orders (`uusdc`) so fiat charges map cleanly to on-chain pricing.
 
 ## Cross-Chain Payment via ecoBridge
 
