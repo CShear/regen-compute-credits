@@ -20,6 +20,8 @@ export interface Config {
   defaultJurisdiction: string;
   certificateBaseUrl: string;
   certificateOutputDir: string;
+  dashboardBaseUrl: string;
+  dashboardOutputDir: string;
   protocolFeeBps: number;
 
   // ecoBridge integration (Phase 1.5)
@@ -145,6 +147,10 @@ export function loadConfig(): Config {
       "https://regen.network/certificate",
     certificateOutputDir:
       process.env.REGEN_CERTIFICATE_OUTPUT_DIR || "data/certificates",
+    dashboardBaseUrl:
+      process.env.REGEN_DASHBOARD_BASE_URL || "https://regen.network/dashboard",
+    dashboardOutputDir:
+      process.env.REGEN_DASHBOARD_OUTPUT_DIR || "data/dashboards",
     protocolFeeBps: parseProtocolFeeBps(process.env.REGEN_PROTOCOL_FEE_BPS),
 
     ecoBridgeApiUrl:

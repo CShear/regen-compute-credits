@@ -225,6 +225,20 @@ Generates a user-facing HTML certificate page for a subscriber's monthly fractio
 
 **When it's used:** Publishing shareable certificate pages for dashboards, receipts, and attribution history links.
 
+### `publish_subscriber_dashboard_page`
+
+Generates a user-facing HTML dashboard page for a subscriber and returns:
+- a public URL (based on `REGEN_DASHBOARD_BASE_URL`), and
+- the local generated file path (under `REGEN_DASHBOARD_OUTPUT_DIR`).
+
+Dashboard page content includes:
+- lifetime contribution and attributed impact totals,
+- monthly contribution/attribution history,
+- recent attribution executions with certificate links,
+- subscription status snapshot when Stripe lookup is available.
+
+**When it's used:** Publishing the user account impact dashboard page for web navigation or direct sharing.
+
 ### `retire_credits`
 
 Retires ecocredits on Regen Network. Operates in two modes:
@@ -359,6 +373,9 @@ export REGEN_BATCH_EXECUTIONS_PATH=./data/monthly-batch-executions.json
 # optional subscriber certificate frontend settings
 export REGEN_CERTIFICATE_BASE_URL=https://regen.network/certificate
 export REGEN_CERTIFICATE_OUTPUT_DIR=./data/certificates
+# optional subscriber dashboard frontend settings
+export REGEN_DASHBOARD_BASE_URL=https://regen.network/dashboard
+export REGEN_DASHBOARD_OUTPUT_DIR=./data/dashboards
 # optional protocol fee basis points for monthly pool budgets (800-1200, default 1000)
 export REGEN_PROTOCOL_FEE_BPS=1000
 # optional batch credit mix policy when credit_type is omitted: balanced | off
