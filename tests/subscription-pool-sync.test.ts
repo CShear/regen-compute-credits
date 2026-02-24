@@ -20,13 +20,22 @@ class InMemoryPoolAccountingStore implements PoolAccountingStore {
 }
 
 class StubSubscriptionService {
-  constructor(private readonly invoices: PaidInvoice[]) {}
+  constructor(
+    private readonly customerInvoices: PaidInvoice[],
+    private readonly allInvoices: PaidInvoice[] = []
+  ) {}
 
   async listPaidInvoices(
     _input?: unknown,
     _options?: unknown
   ): Promise<PaidInvoice[]> {
-    return this.invoices;
+    return this.customerInvoices;
+  }
+
+  async listPaidInvoicesAcrossCustomers(
+    _options?: unknown
+  ): Promise<PaidInvoice[]> {
+    return this.allInvoices;
   }
 }
 
@@ -109,5 +118,50 @@ describe("SubscriptionPoolSyncService", () => {
     await expect(
       sync.syncPaidInvoices({ customerId: "cus_123", month: "03-2026" })
     ).rejects.toThrow("month must be in YYYY-MM format");
+  });
+
+  it("supports all-customer sync without identity", async () => {
+    const invoices: PaidInvoice[] = [
+      {
+        invoiceId: "in_global_1",
+        customerId: "cus_a",
+        customerEmail: "a@example.com",
+        subscriptionId: "sub_a",
+        priceId: "price_starter",
+        amountPaidCents: 100,
+        paidAt: "2026-03-01T00:00:00.000Z",
+      },
+      {
+        invoiceId: "in_global_2",
+        customerId: "cus_b",
+        customerEmail: "b@example.com",
+        subscriptionId: "sub_b",
+        priceId: "price_growth",
+        amountPaidCents: 300,
+        paidAt: "2026-03-10T00:00:00.000Z",
+      },
+    ];
+
+    const sync = new SubscriptionPoolSyncService(
+      new StubSubscriptionService([], invoices),
+      poolAccounting
+    );
+
+    const result = await sync.syncPaidInvoices({
+      allCustomers: true,
+      month: "2026-03",
+      limit: 50,
+      maxPages: 3,
+    });
+
+    expect(result.scope).toBe("all_customers");
+    expect(result.fetchedInvoiceCount).toBe(2);
+    expect(result.processedInvoiceCount).toBe(2);
+    expect(result.syncedCount).toBe(2);
+    expect(result.duplicateCount).toBe(0);
+
+    const march = await poolAccounting.getMonthlySummary("2026-03");
+    expect(march.contributionCount).toBe(2);
+    expect(march.totalUsdCents).toBe(400);
   });
 });

@@ -223,4 +223,79 @@ describe("StripeSubscriptionService", () => {
       "/invoices?customer=cus_123&status=paid&limit=5"
     );
   });
+
+  it("lists paid invoices across all customers with pagination", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          has_more: true,
+          data: [
+            {
+              id: "in_3",
+              customer: "cus_999",
+              customer_email: "c@example.com",
+              subscription: "sub_999",
+              amount_paid: 500,
+              currency: "usd",
+              status_transitions: { paid_at: 1_707_000_200 },
+              lines: { data: [{ id: "il_3", price: { id: "price_growth" } }] },
+            },
+            {
+              id: "in_2",
+              customer: "cus_123",
+              customer_email: "b@example.com",
+              subscription: "sub_123",
+              amount_paid: 100,
+              currency: "usd",
+              status_transitions: { paid_at: 1_707_000_100 },
+              lines: { data: [{ id: "il_2", price: { id: "price_starter" } }] },
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          has_more: false,
+          data: [
+            {
+              id: "in_1",
+              customer: "cus_321",
+              customer_email: "a@example.com",
+              subscription: "sub_321",
+              amount_paid: 300,
+              currency: "usd",
+              status_transitions: { paid_at: 1_707_000_000 },
+              lines: { data: [{ id: "il_1", price: { id: "price_impact" } }] },
+            },
+          ],
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new StripeSubscriptionService();
+    const invoices = await service.listPaidInvoicesAcrossCustomers({
+      limit: 2,
+      maxPages: 5,
+    });
+
+    expect(invoices).toHaveLength(3);
+    expect(invoices[0]).toMatchObject({
+      invoiceId: "in_1",
+      customerId: "cus_321",
+      amountPaidCents: 300,
+    });
+    expect(invoices[2]).toMatchObject({
+      invoiceId: "in_3",
+      customerId: "cus_999",
+      amountPaidCents: 500,
+    });
+
+    const [firstUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(firstUrl).toContain("/invoices?status=paid&limit=2");
+    const [secondUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(secondUrl).toContain(
+      "/invoices?status=paid&limit=2&starting_after=in_2"
+    );
+  });
 });

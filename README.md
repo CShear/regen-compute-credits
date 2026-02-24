@@ -204,6 +204,20 @@ Fetches paid Stripe invoices for a customer and records them into pool accountin
 | `user_id` | Optional internal user ID override for attribution. |
 | `limit` | Optional max invoices to fetch (`1-100`, default `100`). |
 
+### `sync_all_subscription_pool_contributions`
+
+Fetches paid Stripe invoices account-wide (across customers) and records them into pool accounting with duplicate protection by invoice ID (`stripe_invoice:<id>`).
+
+**When it's used:** Monthly reconciliation across the full subscription base before running pooled batch retirement.
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `month` | Optional month filter in `YYYY-MM` format. |
+| `limit` | Per-page Stripe invoice fetch size (`1-100`, default `100`). |
+| `max_pages` | Max invoice pages to fetch (`1-50`, default `10`). |
+
 ### `record_pool_contribution`
 
 Records a contribution event in the pool ledger for per-user accounting and monthly aggregation.

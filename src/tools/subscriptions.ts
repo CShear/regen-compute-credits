@@ -152,6 +152,62 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function renderPoolSyncResult(
+  title: string,
+  result: {
+    scope: "customer" | "all_customers";
+    customerId?: string;
+    email?: string;
+    month?: string;
+    fetchedInvoiceCount: number;
+    processedInvoiceCount: number;
+    syncedCount: number;
+    duplicateCount: number;
+    skippedCount: number;
+    records: Array<{
+      invoiceId: string;
+      contributionId: string;
+      amountUsdCents: number;
+      duplicated: boolean;
+      paidAt: string;
+    }>;
+  }
+): string {
+  const lines: string[] = [
+    `## ${title}`,
+    "",
+    "| Field | Value |",
+    "|-------|-------|",
+    `| Scope | ${result.scope === "all_customers" ? "all_customers" : "customer"} |`,
+    `| Customer ID | ${result.customerId || "N/A"} |`,
+    `| Email | ${result.email || "N/A"} |`,
+    `| Month Filter | ${result.month || "none"} |`,
+    `| Invoices Fetched | ${result.fetchedInvoiceCount} |`,
+    `| Invoices Processed | ${result.processedInvoiceCount} |`,
+    `| Synced | ${result.syncedCount} |`,
+    `| Duplicates | ${result.duplicateCount} |`,
+    `| Skipped (month filter) | ${result.skippedCount} |`,
+  ];
+
+  if (result.records.length > 0) {
+    lines.push(
+      "",
+      "### Processed Invoices",
+      "",
+      "| Invoice ID | Contribution ID | Amount | Duplicate | Paid At |",
+      "|------------|------------------|--------|-----------|---------|",
+      ...result.records.map(
+        (record) =>
+          `| ${record.invoiceId} | ${record.contributionId} | ${formatMoney(record.amountUsdCents)} | ${record.duplicated ? "Yes" : "No"} | ${record.paidAt} |`
+      )
+    );
+  } else {
+    lines.push("", "No paid invoices matched the provided filter.");
+  }
+
+  return lines.join("\n");
+}
+
 export async function syncSubscriptionPoolContributionsTool(
   month?: string,
   email?: string,
@@ -167,39 +223,14 @@ export async function syncSubscriptionPoolContributionsTool(
       userId,
       limit,
     });
-
-    const lines: string[] = [
-      "## Subscription Pool Sync",
-      "",
-      "| Field | Value |",
-      "|-------|-------|",
-      `| Customer ID | ${result.customerId || "N/A"} |`,
-      `| Email | ${result.email || "N/A"} |`,
-      `| Month Filter | ${result.month || "none"} |`,
-      `| Invoices Fetched | ${result.fetchedInvoiceCount} |`,
-      `| Invoices Processed | ${result.processedInvoiceCount} |`,
-      `| Synced | ${result.syncedCount} |`,
-      `| Duplicates | ${result.duplicateCount} |`,
-      `| Skipped (month filter) | ${result.skippedCount} |`,
-    ];
-
-    if (result.records.length > 0) {
-      lines.push(
-        "",
-        "### Processed Invoices",
-        "",
-        "| Invoice ID | Contribution ID | Amount | Duplicate | Paid At |",
-        "|------------|------------------|--------|-----------|---------|",
-        ...result.records.map(
-          (record) =>
-            `| ${record.invoiceId} | ${record.contributionId} | ${formatMoney(record.amountUsdCents)} | ${record.duplicated ? "Yes" : "No"} | ${record.paidAt} |`
-        )
-      );
-    } else {
-      lines.push("", "No paid invoices matched the provided filter.");
-    }
-
-    return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: renderPoolSyncResult("Subscription Pool Sync", result),
+        },
+      ],
+    };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown sync error occurred";
@@ -208,6 +239,42 @@ export async function syncSubscriptionPoolContributionsTool(
         {
           type: "text" as const,
           text: `Subscription pool sync failed: ${message}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
+export async function syncAllSubscriptionPoolContributionsTool(
+  month?: string,
+  limit?: number,
+  maxPages?: number
+) {
+  try {
+    const result = await poolSync.syncPaidInvoices({
+      month,
+      limit,
+      maxPages,
+      allCustomers: true,
+    });
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: renderPoolSyncResult("All-Customer Subscription Pool Sync", result),
+        },
+      ],
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown sync error occurred";
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `All-customer subscription pool sync failed: ${message}`,
         },
       ],
       isError: true,

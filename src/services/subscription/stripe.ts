@@ -70,6 +70,7 @@ interface StripeSubscription {
 
 interface StripeListResponse<T> {
   data: T[];
+  has_more?: boolean;
 }
 
 export interface PaidInvoice {
@@ -322,6 +323,45 @@ export class StripeSubscriptionService {
     return list.data;
   }
 
+  private clampInvoiceFetchLimit(rawLimit?: number): number {
+    return typeof rawLimit === "number" && Number.isInteger(rawLimit)
+      ? Math.min(100, Math.max(1, rawLimit))
+      : 100;
+  }
+
+  private normalizePaidInvoice(
+    invoice: StripeInvoice,
+    fallbackCustomer?: StripeCustomer
+  ): PaidInvoice | null {
+    const paidAtEpoch = invoice.status_transitions?.paid_at;
+    const amountPaidCents = invoice.amount_paid;
+    const currency = (invoice.currency || "").toLowerCase();
+    const customerId = invoice.customer || fallbackCustomer?.id;
+
+    if (
+      !customerId ||
+      !paidAtEpoch ||
+      !amountPaidCents ||
+      amountPaidCents <= 0 ||
+      currency !== "usd"
+    ) {
+      return null;
+    }
+
+    const paidAtIso = new Date(paidAtEpoch * 1000).toISOString();
+    const linePriceId = invoice.lines?.data?.[0]?.price?.id;
+
+    return {
+      invoiceId: invoice.id,
+      customerId,
+      customerEmail: invoice.customer_email || fallbackCustomer?.email,
+      subscriptionId: invoice.subscription,
+      priceId: linePriceId,
+      amountPaidCents,
+      paidAt: paidAtIso,
+    };
+  }
+
   async ensureSubscription(
     tierId: SubscriptionTierId,
     input: SubscriptionIdentityInput
@@ -448,11 +488,7 @@ export class StripeSubscriptionService {
       return [];
     }
 
-    const rawLimit = options?.limit;
-    const limit =
-      typeof rawLimit === "number" && Number.isInteger(rawLimit)
-        ? Math.min(100, Math.max(1, rawLimit))
-        : 100;
+    const limit = this.clampInvoiceFetchLimit(options?.limit);
 
     const invoices = await this.stripeRequest<StripeListResponse<StripeInvoice>>(
       "GET",
@@ -465,32 +501,49 @@ export class StripeSubscriptionService {
     );
 
     return invoices.data
-      .map((invoice): PaidInvoice | null => {
-        const paidAtEpoch = invoice.status_transitions?.paid_at;
-        const amountPaidCents = invoice.amount_paid;
-        const currency = (invoice.currency || "").toLowerCase();
-        if (
-          !paidAtEpoch ||
-          !amountPaidCents ||
-          amountPaidCents <= 0 ||
-          currency !== "usd"
-        ) {
-          return null;
+      .map((invoice) => this.normalizePaidInvoice(invoice, customer))
+      .filter((item): item is PaidInvoice => Boolean(item))
+      .sort((a, b) => a.paidAt.localeCompare(b.paidAt));
+  }
+
+  async listPaidInvoicesAcrossCustomers(options?: {
+    limit?: number;
+    maxPages?: number;
+  }): Promise<PaidInvoice[]> {
+    const limit = this.clampInvoiceFetchLimit(options?.limit);
+    const maxPages =
+      typeof options?.maxPages === "number" && Number.isInteger(options.maxPages)
+        ? Math.min(50, Math.max(1, options.maxPages))
+        : 10;
+
+    const results: PaidInvoice[] = [];
+    let startingAfter: string | undefined;
+
+    for (let page = 0; page < maxPages; page += 1) {
+      const invoices = await this.stripeRequest<StripeListResponse<StripeInvoice>>(
+        "GET",
+        "/invoices",
+        {
+          status: "paid",
+          limit,
+          starting_after: startingAfter,
         }
+      );
 
-        const paidAtIso = new Date(paidAtEpoch * 1000).toISOString();
-        const linePriceId = invoice.lines?.data?.[0]?.price?.id;
+      results.push(
+        ...invoices.data
+          .map((invoice) => this.normalizePaidInvoice(invoice))
+          .filter((item): item is PaidInvoice => Boolean(item))
+      );
 
-        return {
-          invoiceId: invoice.id,
-          customerId: invoice.customer || customer.id,
-          customerEmail: invoice.customer_email || customer.email,
-          subscriptionId: invoice.subscription,
-          priceId: linePriceId,
-          amountPaidCents,
-          paidAt: paidAtIso,
-        };
-      })
+      const lastId = invoices.data[invoices.data.length - 1]?.id;
+      if (!invoices.has_more || !lastId) {
+        break;
+      }
+      startingAfter = lastId;
+    }
+
+    return results
       .filter((item): item is PaidInvoice => Boolean(item))
       .sort((a, b) => a.paidAt.localeCompare(b.paidAt));
   }

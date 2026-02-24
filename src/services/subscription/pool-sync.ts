@@ -20,6 +20,8 @@ export interface SubscriptionPoolSyncInput extends SubscriptionIdentityInput {
   userId?: string;
   month?: string;
   limit?: number;
+  maxPages?: number;
+  allCustomers?: boolean;
 }
 
 export interface SyncedSubscriptionContribution {
@@ -31,6 +33,7 @@ export interface SyncedSubscriptionContribution {
 }
 
 export interface SubscriptionPoolSyncResult {
+  scope: "customer" | "all_customers";
   customerId?: string;
   email?: string;
   month?: string;
@@ -46,7 +49,7 @@ export class SubscriptionPoolSyncService {
   constructor(
     private readonly subscriptions: Pick<
       StripeSubscriptionService,
-      "listPaidInvoices"
+      "listPaidInvoices" | "listPaidInvoicesAcrossCustomers"
     > = new StripeSubscriptionService(),
     private readonly poolAccounting: PoolAccountingService = new PoolAccountingService()
   ) {}
@@ -60,17 +63,23 @@ export class SubscriptionPoolSyncService {
     };
     const userId = normalize(input.userId);
     const month = normalize(input.month);
+    const allCustomers = Boolean(input.allCustomers);
 
-    if (!identity.customerId && !identity.email) {
+    if (!allCustomers && !identity.customerId && !identity.email) {
       throw new Error("Provide at least one of customerId or email");
     }
     if (month && !MONTH_REGEX.test(month)) {
       throw new Error("month must be in YYYY-MM format");
     }
 
-    const fetched = await this.subscriptions.listPaidInvoices(identity, {
-      limit: input.limit,
-    });
+    const fetched = allCustomers
+      ? await this.subscriptions.listPaidInvoicesAcrossCustomers({
+          limit: input.limit,
+          maxPages: input.maxPages,
+        })
+      : await this.subscriptions.listPaidInvoices(identity, {
+          limit: input.limit,
+        });
     const invoices = month
       ? fetched.filter((invoice) => invoice.paidAt.slice(0, 7) === month)
       : fetched;
@@ -94,7 +103,9 @@ export class SubscriptionPoolSyncService {
         metadata: {
           stripe_invoice_id: invoice.invoiceId,
           stripe_price_id: invoice.priceId || "",
-          synced_by: "sync_subscription_pool_contributions",
+          synced_by: allCustomers
+            ? "sync_all_subscription_pool_contributions"
+            : "sync_subscription_pool_contributions",
         },
       });
 
@@ -114,6 +125,7 @@ export class SubscriptionPoolSyncService {
     }
 
     return {
+      scope: allCustomers ? "all_customers" : "customer",
       customerId:
         invoices[0]?.customerId || fetched[0]?.customerId || identity.customerId,
       email: identity.email || invoices[0]?.customerEmail || fetched[0]?.customerEmail,

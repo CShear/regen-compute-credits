@@ -9,6 +9,7 @@ import { retireCredits } from "./tools/retire.js";
 import {
   listSubscriptionTiersTool,
   manageSubscriptionTool,
+  syncAllSubscriptionPoolContributionsTool,
   syncSubscriptionPoolContributionsTool,
 } from "./tools/subscriptions.js";
 import {
@@ -114,13 +115,14 @@ const server = new McpServer(
         : []),
       "5. list_subscription_tiers / manage_subscription — manage $1/$3/$5 recurring contribution plans",
       "6. sync_subscription_pool_contributions — ingest paid Stripe invoices into pool accounting with idempotency",
-      "7. record_pool_contribution / get_pool_accounting_summary — track monthly subscription pool accounting",
-      "8. run_monthly_batch_retirement — execute the monthly pooled credit retirement batch",
-      "9. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
-      "10. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
-      "11. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
-      "12. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
-      "13. link_identity_session / recover_identity_session — identity linking and recovery flows",
+      "7. sync_all_subscription_pool_contributions — account-wide Stripe paid-invoice reconciliation with pagination",
+      "8. record_pool_contribution / get_pool_accounting_summary — track monthly subscription pool accounting",
+      "9. run_monthly_batch_retirement — execute the monthly pooled credit retirement batch",
+      "10. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
+      "11. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
+      "12. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
+      "13. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
+      "14. link_identity_session / recover_identity_session — identity linking and recovery flows",
       "",
       ...(walletMode
         ? [
@@ -131,6 +133,7 @@ const server = new McpServer(
           ]),
       "The manage_subscription tool can create, update, or cancel Stripe subscriptions.",
       "The sync_subscription_pool_contributions tool ingests paid Stripe invoices into the pool ledger safely (duplicate-safe via invoice IDs).",
+      "The sync_all_subscription_pool_contributions tool performs account-wide paid invoice ingestion across customers with pagination controls.",
       "Pool accounting tools support per-user contribution tracking and monthly aggregation summaries.",
       "Monthly batch retirement uses pool accounting totals to execute one on-chain retirement per month.",
       "Subscriber dashboard tools expose fractional attribution and impact history per user.",
@@ -332,6 +335,37 @@ server.tool(
       user_id,
       limit
     );
+  }
+);
+
+// Tool: Sync paid Stripe invoices across all customers into pool accounting
+server.tool(
+  "sync_all_subscription_pool_contributions",
+  "Ingests paid Stripe invoices account-wide into pool accounting with idempotent deduplication by invoice ID. Supports pagination controls for large invoice sets.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Optional month filter in YYYY-MM format"),
+    limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Per-page Stripe invoice fetch size (1-100, default 100)"),
+    max_pages: z
+      .number()
+      .int()
+      .optional()
+      .describe("Maximum pages to fetch from Stripe invoices API (1-50, default 10)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({ month, limit, max_pages }) => {
+    return syncAllSubscriptionPoolContributionsTool(month, limit, max_pages);
   }
 );
 
