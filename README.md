@@ -154,6 +154,211 @@ Shows aggregate ecological impact statistics from Regen Network — live on-chai
 | Kilo-Sheep-Hour (KSH) | Grazing-based stewardship |
 ```
 
+### `list_subscription_tiers`
+
+Lists recurring contribution tiers and configuration status for Stripe price mappings.
+
+**When it's used:** The user wants to see available monthly plans (`$1/$3/$5`) before subscribing.
+
+**Example output:**
+```
+## Subscription Tiers
+
+| Tier | Name | Monthly Price | Description | Stripe Price Config |
+|------|------|---------------|-------------|---------------------|
+| starter | Starter | $1/month | Entry tier for monthly ecological contributions. | Configured |
+| growth | Growth | $3/month | Balanced recurring contribution tier. | Configured |
+| impact | Impact | $5/month | Highest monthly contribution tier. | Configured |
+```
+
+### `manage_subscription`
+
+Creates, updates, checks, or cancels Stripe subscription state for a customer.
+
+**Actions:** `subscribe`, `status`, `cancel`
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `action` | One of `subscribe`, `status`, `cancel`. Required. |
+| `tier` | Plan ID for subscribe: `starter` ($1), `growth` ($3), `impact` ($5). |
+| `email` | Customer email for lookup/creation. |
+| `customer_id` | Existing Stripe customer ID (alternative to email). |
+| `full_name` | Name to use when creating a Stripe customer. |
+| `payment_method_id` | Stripe PaymentMethod to set as default when subscribing. |
+
+### `sync_subscription_pool_contributions`
+
+Fetches paid Stripe invoices for a customer and records them into pool accounting with duplicate protection by invoice ID (`stripe_invoice:<id>`).
+
+**When it's used:** Subscription reconciliation and safe reruns of invoice ingestion without double-counting.
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `month` | Optional month filter in `YYYY-MM` format. |
+| `email` | Stripe customer email (alternative to `customer_id`). |
+| `customer_id` | Stripe customer ID (alternative to `email`). |
+| `user_id` | Optional internal user ID override for attribution. |
+| `limit` | Optional max invoices to fetch (`1-100`, default `100`). |
+
+### `sync_all_subscription_pool_contributions`
+
+Fetches paid Stripe invoices account-wide (across customers) and records them into pool accounting with duplicate protection by invoice ID (`stripe_invoice:<id>`).
+
+**When it's used:** Monthly reconciliation across the full subscription base before running pooled batch retirement.
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `month` | Optional month filter in `YYYY-MM` format. |
+| `limit` | Per-page Stripe invoice fetch size (`1-100`, default `100`). |
+| `max_pages` | Max invoice pages to fetch (`1-50`, default `10`). |
+
+### `record_pool_contribution`
+
+Records a contribution event in the pool ledger for per-user accounting and monthly aggregation.
+
+**When it's used:** Internal/admin workflows that ingest paid subscription events into the retirement pool ledger.
+
+Supports optional `source_event_id` for idempotent writes when ingesting external payment events.
+
+### `get_pool_accounting_summary`
+
+Returns either:
+- user-level contribution summary (lifetime + by-month totals), or
+- month-level pool aggregate summary (total amount + contributors).
+
+**When it's used:** Preparing monthly batch retirement inputs and reconciling contributor balances.
+
+### `run_monthly_batch_retirement`
+
+Executes the monthly pooled retirement batch from the contribution ledger.
+
+Supports:
+- `dry_run=true` planning (default, no on-chain transaction),
+- real execution with `dry_run=false`,
+- duplicate-run protection per month (override with `force=true`),
+- automated carbon+biodiversity mix policy when `credit_type` is omitted,
+- protocol fee allocation (configurable `8%-12%`, default `10%`) with gross/fee/net budget reporting,
+- protocol fee REGEN acquisition adapter output (planned/executed/skipped),
+- REGEN burn execution status (planned/executed/skipped/failed).
+
+**When it's used:** Running the monthly pooled buy-and-retire process from aggregated subscription funds.
+
+### `run_monthly_reconciliation`
+
+Runs an operator workflow in one call:
+1. Optional contribution sync from Stripe paid invoices, then
+2. Monthly batch retirement planning/execution.
+
+Supports all `run_monthly_batch_retirement` execution parameters plus sync controls:
+- `sync_scope`: `none` | `customer` | `all_customers` (default),
+- `email` / `customer_id` / `user_id` for customer-scoped sync,
+- `invoice_limit` and `invoice_max_pages` for Stripe pagination control,
+- `sync_timeout_ms` / `batch_timeout_ms` to bound sync and batch phase runtime,
+- `preflight_only` (default `false`) to run sync + safety checks without executing the batch,
+- `allow_partial_sync` (default `false`) to explicitly allow execution after truncated all-customer sync,
+- `allow_execute_without_dry_run` (default `false`) to allow live execution without a latest prior dry-run for the same month/credit type.
+
+All-customer sync output now reports whether Stripe pagination was truncated by the `invoice_max_pages` cap so operators can rerun with a higher limit when needed.
+Live execution preflight also requires the latest record for that month/credit type to be a fresh `dry_run` (not older than the latest contribution), unless explicitly overridden.
+Reconciliation runs are also single-flight per month/credit type; concurrent overlapping requests are rejected until the active run completes.
+When a sync/batch timeout is hit, the run lock remains active until the timed-out phase fully settles, preventing overlapping retries from racing.
+Single-flight locking is now file-backed (`REGEN_RECONCILIATION_LOCKS_DIR`) so overlap protection survives process restarts and works across multiple workers sharing the same filesystem.
+If reconciliation run-history persistence fails, execution continues but returns explicit warnings in tool output.
+
+**When it's used:** Monthly close/reconciliation where operators want deterministic “sync then run batch” execution with one tool invocation.
+
+### `get_monthly_batch_execution_history`
+
+Returns stored monthly batch execution history from the local execution ledger (`REGEN_BATCH_EXECUTIONS_PATH`) with optional filters:
+- `month` (`YYYY-MM`)
+- `status` (`success` | `failed` | `dry_run`)
+- `credit_type` (`carbon` | `biodiversity`)
+- `dry_run` (`true` / `false`)
+- `limit` (`1-200`, default `50`)
+
+**When it's used:** Operator auditing, post-run troubleshooting, and confirming prior dry-run/success/failure outcomes.
+
+### `get_monthly_reconciliation_status`
+
+Returns an operator readiness snapshot for a month by combining:
+- pool contribution totals,
+- protocol fee and net budget preview,
+- latest batch execution state (`none`/`dry_run`/`success`/`failed`),
+- latest successful execution lookup (not just latest attempt),
+- actionable recommendation for the next step.
+
+**Parameters:**
+- `month` (`YYYY-MM`, required)
+- `credit_type` (`carbon` | `biodiversity`, optional filter for latest execution lookup)
+
+**When it's used:** Pre-flight check before monthly execution, and quick triage when deciding whether to sync, dry-run, execute, or avoid reruns.
+
+### `get_monthly_reconciliation_run_history`
+
+Returns persisted reconciliation orchestration history from the local run ledger (`REGEN_RECONCILIATION_RUNS_PATH`) with optional filters:
+- `month` (`YYYY-MM`)
+- `status` (`in_progress` | `completed` | `blocked` | `failed`)
+- `credit_type` (`carbon` | `biodiversity`)
+- `limit` (`1-200`, default `50`)
+
+**When it's used:** Operator auditing/troubleshooting across end-to-end reconciliation attempts, including blocked preflight runs and timeout/error failures.
+
+### `publish_subscriber_certificate_page`
+
+Generates a user-facing HTML certificate page for a subscriber's monthly fractional attribution record and returns:
+- a public URL (based on `REGEN_CERTIFICATE_BASE_URL`), and
+- the local generated file path (under `REGEN_CERTIFICATE_OUTPUT_DIR`).
+
+**When it's used:** Publishing shareable certificate pages for dashboards, receipts, and attribution history links.
+
+### `publish_subscriber_dashboard_page`
+
+Generates a user-facing HTML dashboard page for a subscriber and returns:
+- a public URL (based on `REGEN_DASHBOARD_BASE_URL`), and
+- the local generated file path (under `REGEN_DASHBOARD_OUTPUT_DIR`).
+
+Dashboard page content includes:
+- lifetime contribution and attributed impact totals,
+- monthly contribution/attribution history,
+- recent attribution executions with certificate links,
+- subscription status snapshot when Stripe lookup is available.
+
+**When it's used:** Publishing the user account impact dashboard page for web navigation or direct sharing.
+
+### `start_identity_auth_session`
+
+Starts a hardened identity verification session using either:
+- `method=email` (issues a one-time verification code), or
+- `method=oauth` (issues a signed OAuth state token).
+
+### `verify_identity_auth_session`
+
+Verifies a pending identity session:
+- email sessions require `verification_code`,
+- oauth sessions require `oauth_state_token`, `auth_provider`, and `auth_subject`.
+
+Returns a verified `auth_session_id` that can be passed into `retire_credits`.
+
+### `get_identity_auth_session`
+
+Returns session status (`pending`, `verified`, `expired`, `locked`) and attribution metadata.
+
+### `link_identity_session`
+
+Links a verified auth session to an internal `user_id` for long-lived attribution continuity.
+
+### `recover_identity_session`
+
+Provides recovery flow for verified identities:
+- `action=start` issues a recovery token for a verified email identity,
+- `action=complete` consumes that token and mints a fresh verified auth session.
+
 ### `retire_credits`
 
 Retires ecocredits on Regen Network. Operates in two modes:
@@ -170,10 +375,16 @@ When `ECOBRIDGE_ENABLED=true`, the fallback message also suggests `retire_via_ec
 | `credit_class` | Credit class to retire (e.g., 'C01', 'BT01'). Optional. |
 | `quantity` | Number of credits to retire. Optional (defaults to 1). |
 | `beneficiary_name` | Name for the retirement certificate. Optional. |
+| `beneficiary_email` | Email for retirement attribution metadata. Optional. |
+| `auth_provider` | OAuth provider for identity attribution (e.g., `google`, `github`). Optional (requires `auth_subject`). |
+| `auth_subject` | OAuth user subject/ID for attribution metadata. Optional (requires `auth_provider`). |
+| `auth_session_id` | Verified identity auth session ID. When provided, verified session identity overrides direct auth/email fields. |
 | `jurisdiction` | Retirement jurisdiction (ISO 3166-1, e.g., 'US', 'DE'). Optional. |
 | `reason` | Reason for retiring credits (recorded on-chain). Optional. |
 
 **When it's used:** The user wants to take action and actually fund ecological regeneration.
+
+Identity attribution fields are embedded into retirement reason metadata so `get_retirement_certificate` can display user attribution details later.
 
 ### `browse_ecobridge_tokens`
 
@@ -266,6 +477,72 @@ export REGEN_WALLET_MNEMONIC="your 24 word mnemonic here"
 export REGEN_RPC_URL=https://mainnet.regen.network:26657
 export REGEN_CHAIN_ID=regen-1
 ```
+Stripe-backed authorization/capture is also supported:
+
+```bash
+export REGEN_PAYMENT_PROVIDER=stripe
+export STRIPE_SECRET_KEY=sk_live_...
+export STRIPE_PAYMENT_METHOD_ID=pm_...
+# optional if your payment method is attached to a customer
+export STRIPE_CUSTOMER_ID=cus_...
+export STRIPE_PRICE_ID_STARTER=price_...
+export STRIPE_PRICE_ID_GROWTH=price_...
+export STRIPE_PRICE_ID_IMPACT=price_...
+# optional custom ledger path for pool accounting service
+export REGEN_POOL_ACCOUNTING_PATH=./data/pool-accounting-ledger.json
+# optional pool accounting store lock tuning
+export REGEN_POOL_ACCOUNTING_LOCK_WAIT_MS=10000
+export REGEN_POOL_ACCOUNTING_LOCK_RETRY_MS=25
+export REGEN_POOL_ACCOUNTING_LOCK_STALE_MS=60000
+# optional custom history path for monthly batch executions
+export REGEN_BATCH_EXECUTIONS_PATH=./data/monthly-batch-executions.json
+# optional batch execution store lock tuning
+export REGEN_BATCH_EXECUTIONS_LOCK_WAIT_MS=10000
+export REGEN_BATCH_EXECUTIONS_LOCK_RETRY_MS=25
+export REGEN_BATCH_EXECUTIONS_LOCK_STALE_MS=60000
+# optional custom history path for monthly reconciliation orchestration runs
+export REGEN_RECONCILIATION_RUNS_PATH=./data/monthly-reconciliation-runs.json
+# optional lock directory for reconciliation single-flight protection
+export REGEN_RECONCILIATION_LOCKS_DIR=./data/monthly-reconciliation-locks
+# optional stale-lock TTL in milliseconds (default 1800000)
+export REGEN_RECONCILIATION_LOCK_TTL_MS=1800000
+# optional reconciliation run-history write-lock tuning
+export REGEN_RECONCILIATION_RUNS_LOCK_WAIT_MS=10000
+export REGEN_RECONCILIATION_RUNS_LOCK_RETRY_MS=25
+export REGEN_RECONCILIATION_RUNS_LOCK_STALE_MS=60000
+# optional subscriber certificate frontend settings
+export REGEN_CERTIFICATE_BASE_URL=https://regen.network/certificate
+export REGEN_CERTIFICATE_OUTPUT_DIR=./data/certificates
+# optional subscriber dashboard frontend settings
+export REGEN_DASHBOARD_BASE_URL=https://regen.network/dashboard
+export REGEN_DASHBOARD_OUTPUT_DIR=./data/dashboards
+# optional identity auth store path
+export REGEN_AUTH_STORE_PATH=./data/auth-state.json
+# strongly recommended shared secret for auth code/state/recovery signing
+export REGEN_AUTH_SECRET=replace-with-long-random-secret
+# optional auth session TTL in seconds (default 900)
+export REGEN_AUTH_SESSION_TTL_SECONDS=900
+# optional max verification attempts before lock (default 5)
+export REGEN_AUTH_MAX_ATTEMPTS=5
+# optional recovery token TTL in seconds (default 86400)
+export REGEN_AUTH_RECOVERY_TTL_SECONDS=86400
+# optional allowed OAuth providers CSV (default google,github)
+export REGEN_AUTH_ALLOWED_OAUTH_PROVIDERS=google,github
+# optional protocol fee basis points for monthly pool budgets (800-1200, default 1000)
+export REGEN_PROTOCOL_FEE_BPS=1000
+# optional batch credit mix policy when credit_type is omitted: balanced | off
+export REGEN_BATCH_CREDIT_MIX_POLICY=balanced
+# optional protocol fee REGEN acquisition provider: disabled | simulated
+export REGEN_ACQUISITION_PROVIDER=disabled
+# optional simulated acquisition rate (micro-REGEN per 1 USDC, default 2000000)
+export REGEN_ACQUISITION_RATE_UREGEN_PER_USDC=2000000
+# optional REGEN burn provider: disabled | simulated | onchain
+export REGEN_BURN_PROVIDER=disabled
+# required when REGEN_BURN_PROVIDER=onchain
+export REGEN_BURN_ADDRESS=regen1...
+```
+
+Note: Stripe mode currently requires USDC-denominated sell orders (`uusdc`) so fiat charges map cleanly to on-chain pricing.
 
 ## Cross-Chain Payment via ecoBridge
 

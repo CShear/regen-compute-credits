@@ -1,0 +1,378 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MonthlyBatchRetirementExecutor } from "../src/services/batch-retirement/executor.js";
+import type {
+  BatchExecutionState,
+  BatchExecutionStore,
+  BudgetOrderSelection,
+  RegenAcquisitionRecord,
+  RegenBurnRecord,
+} from "../src/services/batch-retirement/types.js";
+
+class InMemoryBatchExecutionStore implements BatchExecutionStore {
+  private state: BatchExecutionState = { version: 1, executions: [] };
+
+  async readState(): Promise<BatchExecutionState> {
+    return JSON.parse(JSON.stringify(this.state)) as BatchExecutionState;
+  }
+
+  async writeState(state: BatchExecutionState): Promise<void> {
+    this.state = JSON.parse(JSON.stringify(state)) as BatchExecutionState;
+  }
+
+  async withExclusiveState<T>(
+    updater: (state: BatchExecutionState) => T | Promise<T>
+  ): Promise<T> {
+    const state = await this.readState();
+    const result = await updater(state);
+    await this.writeState(state);
+    return result;
+  }
+}
+
+describe("MonthlyBatchRetirementExecutor", () => {
+  let store: InMemoryBatchExecutionStore;
+  let selectOrdersForBudget: ReturnType<typeof vi.fn>;
+  let signAndBroadcast: ReturnType<typeof vi.fn>;
+  let waitForRetirement: ReturnType<typeof vi.fn>;
+  let initWallet: ReturnType<typeof vi.fn>;
+  let getMonthlySummary: ReturnType<typeof vi.fn>;
+  let planAcquisition: ReturnType<typeof vi.fn>;
+  let executeAcquisition: ReturnType<typeof vi.fn>;
+  let planBurn: ReturnType<typeof vi.fn>;
+  let executeBurn: ReturnType<typeof vi.fn>;
+
+  const selection: BudgetOrderSelection = {
+    orders: [
+      {
+        sellOrderId: "101",
+        batchDenom: "C01-001-2026",
+        quantity: "1.250000",
+        askAmount: "2000000",
+        askDenom: "uusdc",
+        costMicro: 2_500_000n,
+      },
+    ],
+    totalQuantity: "1.250000",
+    totalCostMicro: 2_500_000n,
+    remainingBudgetMicro: 500_000n,
+    paymentDenom: "uusdc",
+    displayDenom: "USDC",
+    exponent: 6,
+    exhaustedBudget: false,
+  };
+
+  beforeEach(() => {
+    store = new InMemoryBatchExecutionStore();
+    selectOrdersForBudget = vi.fn().mockResolvedValue(selection);
+    signAndBroadcast = vi.fn().mockResolvedValue({
+      code: 0,
+      transactionHash: "TX123",
+      height: 123456,
+      rawLog: "",
+    });
+    waitForRetirement = vi.fn().mockResolvedValue({ nodeId: "WyRet123" });
+    initWallet = vi.fn().mockResolvedValue({ address: "regen1batchbuyer" });
+    planAcquisition = vi.fn().mockResolvedValue({
+      provider: "simulated",
+      status: "planned",
+      spendMicro: "300000",
+      spendDenom: "USDC",
+      estimatedRegenMicro: "600000",
+      message: "Planned simulated DEX acquisition for 2026-03.",
+    } satisfies RegenAcquisitionRecord);
+    executeAcquisition = vi.fn().mockResolvedValue({
+      provider: "simulated",
+      status: "executed",
+      spendMicro: "300000",
+      spendDenom: "USDC",
+      estimatedRegenMicro: "600000",
+      acquiredRegenMicro: "600000",
+      txHash: "sim_dex_abc",
+      message: "Executed simulated DEX acquisition for 2026-03.",
+    } satisfies RegenAcquisitionRecord);
+    planBurn = vi.fn().mockResolvedValue({
+      provider: "simulated",
+      status: "planned",
+      amountMicro: "600000",
+      denom: "uregen",
+      burnAddress: "simulated-burn-address",
+      message: "Planned simulated REGEN burn for 2026-03.",
+    } satisfies RegenBurnRecord);
+    executeBurn = vi.fn().mockResolvedValue({
+      provider: "simulated",
+      status: "executed",
+      amountMicro: "600000",
+      denom: "uregen",
+      burnAddress: "simulated-burn-address",
+      txHash: "sim_burn_abc",
+      message: "Executed simulated REGEN burn for 2026-03.",
+    } satisfies RegenBurnRecord);
+    getMonthlySummary = vi.fn().mockResolvedValue({
+      month: "2026-03",
+      contributionCount: 3,
+      uniqueContributors: 1,
+      totalUsdCents: 300,
+      totalUsd: 3,
+      contributors: [
+        {
+          userId: "user-a",
+          contributionCount: 3,
+          totalUsdCents: 300,
+          totalUsd: 3,
+        },
+      ],
+    });
+  });
+
+  function createExecutor(walletConfigured = true): MonthlyBatchRetirementExecutor {
+    return new MonthlyBatchRetirementExecutor({
+      poolAccounting: { getMonthlySummary },
+      executionStore: store,
+      selectOrdersForBudget,
+      isWalletConfigured: () => walletConfigured,
+      initWallet,
+      signAndBroadcast,
+      waitForRetirement,
+      regenAcquisitionProvider: {
+        name: "simulated",
+        planAcquisition,
+        executeAcquisition,
+      },
+      regenBurnProvider: {
+        name: "simulated",
+        planBurn,
+        executeBurn,
+      },
+      loadConfig: () =>
+        ({
+          defaultJurisdiction: "US",
+          protocolFeeBps: 1000,
+          batchCreditMixPolicy: "off",
+        }) as any,
+    });
+  }
+
+  it("returns no_contributions when month has no pool funds", async () => {
+    getMonthlySummary.mockResolvedValueOnce({
+      month: "2026-03",
+      contributionCount: 0,
+      uniqueContributors: 0,
+      totalUsdCents: 0,
+      totalUsd: 0,
+      contributors: [],
+    });
+    const executor = createExecutor();
+
+    const result = await executor.runMonthlyBatch({ month: "2026-03" });
+
+    expect(result.status).toBe("no_contributions");
+    expect(selectOrdersForBudget).not.toHaveBeenCalled();
+  });
+
+  it("executes dry-run by default and stores a dry-run execution record", async () => {
+    const executor = createExecutor();
+
+    const result = await executor.runMonthlyBatch({ month: "2026-03" });
+
+    expect(result.status).toBe("dry_run");
+    expect(selectOrdersForBudget).toHaveBeenCalledWith(
+      undefined,
+      2_700_000n,
+      "USDC"
+    );
+    expect(signAndBroadcast).not.toHaveBeenCalled();
+    expect(result.protocolFee).toMatchObject({
+      protocolFeeBps: 1000,
+      grossBudgetUsdCents: 300,
+      protocolFeeUsdCents: 30,
+      creditBudgetUsdCents: 270,
+      protocolFeeDenom: "USDC",
+    });
+    expect(planAcquisition).toHaveBeenCalledWith({
+      month: "2026-03",
+      spendMicro: 300_000n,
+      spendDenom: "USDC",
+    });
+    expect(executeAcquisition).not.toHaveBeenCalled();
+    expect(planBurn).toHaveBeenCalledWith({
+      month: "2026-03",
+      amountMicro: 600_000n,
+    });
+    expect(executeBurn).not.toHaveBeenCalled();
+    expect(result.regenAcquisition?.status).toBe("planned");
+    expect(result.regenBurn?.status).toBe("planned");
+    expect(result.attributions).toHaveLength(1);
+    expect(result.attributions?.[0]).toMatchObject({
+      userId: "user-a",
+      attributedBudgetUsdCents: 270,
+      attributedQuantity: "1.250000",
+    });
+
+    const state = await store.readState();
+    expect(state.executions).toHaveLength(1);
+    expect(state.executions[0]?.status).toBe("dry_run");
+    expect(state.executions[0]?.protocolFee?.protocolFeeUsdCents).toBe(30);
+    expect(state.executions[0]?.attributions?.[0]?.userId).toBe("user-a");
+  });
+
+  it("executes on-chain batch and writes success record when dryRun=false", async () => {
+    const executor = createExecutor(true);
+
+    const result = await executor.runMonthlyBatch({
+      month: "2026-03",
+      dryRun: false,
+      creditType: "carbon",
+    });
+
+    expect(result.status).toBe("success");
+    expect(initWallet).toHaveBeenCalledTimes(1);
+    expect(signAndBroadcast).toHaveBeenCalledTimes(1);
+    expect(waitForRetirement).toHaveBeenCalledWith("TX123");
+    expect(result.txHash).toBe("TX123");
+    expect(result.retirementId).toBe("WyRet123");
+    expect(result.protocolFee?.protocolFeeUsdCents).toBe(30);
+    expect(planAcquisition).toHaveBeenCalledTimes(1);
+    expect(executeAcquisition).toHaveBeenCalledWith({
+      month: "2026-03",
+      spendMicro: 300_000n,
+      spendDenom: "USDC",
+    });
+    expect(executeBurn).toHaveBeenCalledWith({
+      month: "2026-03",
+      amountMicro: 600_000n,
+    });
+    expect(result.regenAcquisition?.status).toBe("executed");
+    expect(result.regenBurn?.status).toBe("executed");
+    expect(result.attributions).toHaveLength(1);
+
+    const state = await store.readState();
+    expect(state.executions).toHaveLength(1);
+    expect(state.executions[0]).toMatchObject({
+      month: "2026-03",
+      status: "success",
+      txHash: "TX123",
+      creditType: "carbon",
+    });
+  });
+
+  it("blocks duplicate successful monthly execution unless force=true", async () => {
+    const executor = createExecutor(true);
+    await executor.runMonthlyBatch({
+      month: "2026-03",
+      dryRun: false,
+      creditType: "carbon",
+    });
+
+    const second = await executor.runMonthlyBatch({
+      month: "2026-03",
+      dryRun: false,
+      creditType: "carbon",
+    });
+    expect(second.status).toBe("already_executed");
+    expect(signAndBroadcast).toHaveBeenCalledTimes(1);
+
+    const forced = await executor.runMonthlyBatch({
+      month: "2026-03",
+      dryRun: false,
+      creditType: "carbon",
+      force: true,
+    });
+    expect(forced.status).toBe("success");
+    expect(signAndBroadcast).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns success with a warning when REGEN burn fails", async () => {
+    const executor = createExecutor(true);
+
+    executeBurn.mockResolvedValueOnce({
+      provider: "simulated",
+      status: "failed",
+      amountMicro: "600000",
+      denom: "uregen",
+      message: "REGEN burn failed: simulated failure",
+    } satisfies RegenBurnRecord);
+
+    const result = await executor.runMonthlyBatch({
+      month: "2026-04",
+      dryRun: false,
+      creditType: "carbon",
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.regenBurn?.status).toBe("failed");
+    expect(result.message).toContain("REGEN burn failed");
+  });
+
+  it("returns execution history with filtering, ordering, and limit", async () => {
+    await store.writeState({
+      version: 1,
+      executions: [
+        {
+          id: "batch_1",
+          month: "2026-01",
+          status: "dry_run",
+          dryRun: true,
+          reason: "Dry run Jan",
+          budgetUsdCents: 100,
+          spentMicro: "900000",
+          spentDenom: "USDC",
+          retiredQuantity: "0.450000",
+          executedAt: "2026-01-31T12:00:00.000Z",
+        },
+        {
+          id: "batch_2",
+          month: "2026-02",
+          creditType: "carbon",
+          status: "success",
+          dryRun: false,
+          reason: "Success Feb",
+          budgetUsdCents: 200,
+          spentMicro: "1800000",
+          spentDenom: "USDC",
+          retiredQuantity: "0.900000",
+          txHash: "TX_FEB",
+          executedAt: "2026-02-28T12:00:00.000Z",
+        },
+        {
+          id: "batch_3",
+          month: "2026-03",
+          creditType: "biodiversity",
+          status: "failed",
+          dryRun: false,
+          reason: "Failed Mar",
+          budgetUsdCents: 300,
+          spentMicro: "0",
+          spentDenom: "USDC",
+          retiredQuantity: "0.000000",
+          error: "rpc unavailable",
+          executedAt: "2026-03-31T12:00:00.000Z",
+        },
+      ],
+    });
+
+    const executor = createExecutor();
+
+    const filtered = await executor.getExecutionHistory({
+      month: "2026-02",
+      status: "success",
+      creditType: "carbon",
+      dryRun: false,
+      limit: 10,
+    });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]?.id).toBe("batch_2");
+
+    const newestTwo = await executor.getExecutionHistory({ limit: 2 });
+    expect(newestTwo.map((item) => item.id)).toEqual(["batch_3", "batch_2"]);
+
+    const oldestFirst = await executor.getExecutionHistory({
+      limit: 3,
+      newestFirst: false,
+    });
+    expect(oldestFirst.map((item) => item.id)).toEqual([
+      "batch_1",
+      "batch_2",
+      "batch_3",
+    ]);
+  });
+});

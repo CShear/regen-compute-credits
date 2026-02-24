@@ -18,6 +18,11 @@ export interface Config {
   walletMnemonic: string | undefined;
   paymentProvider: "crypto" | "stripe";
   defaultJurisdiction: string;
+  certificateBaseUrl: string;
+  certificateOutputDir: string;
+  dashboardBaseUrl: string;
+  dashboardOutputDir: string;
+  protocolFeeBps: number;
 
   // ecoBridge integration (Phase 1.5)
   ecoBridgeApiUrl: string;
@@ -27,9 +32,97 @@ export interface Config {
   // ecoBridge EVM wallet (for sending tokens on Base/Ethereum/etc.)
   ecoBridgeEvmMnemonic: string | undefined;
   ecoBridgeEvmDerivationPath: string;
+  regenAcquisitionProvider: "disabled" | "simulated";
+  regenAcquisitionRateUregenPerUsdc: number;
+  batchCreditMixPolicy: "off" | "balanced";
+  regenBurnProvider: "disabled" | "simulated" | "onchain";
+  regenBurnAddress: string | undefined;
 }
 
 let _config: Config | undefined;
+
+const DEFAULT_PROTOCOL_FEE_BPS = 1000;
+const MIN_PROTOCOL_FEE_BPS = 800;
+const MAX_PROTOCOL_FEE_BPS = 1200;
+const DEFAULT_REGEN_ACQUISITION_PROVIDER = "disabled" as const;
+const DEFAULT_REGEN_ACQUISITION_RATE_UREGEN_PER_USDC = 2_000_000;
+const DEFAULT_BATCH_CREDIT_MIX_POLICY = "balanced" as const;
+const DEFAULT_REGEN_BURN_PROVIDER = "disabled" as const;
+
+function parseProtocolFeeBps(rawValue: string | undefined): number {
+  if (!rawValue) return DEFAULT_PROTOCOL_FEE_BPS;
+
+  const parsed = Number(rawValue);
+  if (
+    !Number.isInteger(parsed) ||
+    parsed < MIN_PROTOCOL_FEE_BPS ||
+    parsed > MAX_PROTOCOL_FEE_BPS
+  ) {
+    throw new Error(
+      `REGEN_PROTOCOL_FEE_BPS must be an integer between ${MIN_PROTOCOL_FEE_BPS} and ${MAX_PROTOCOL_FEE_BPS}`
+    );
+  }
+
+  return parsed;
+}
+
+function parseRegenAcquisitionProvider(
+  rawValue: string | undefined
+): "disabled" | "simulated" {
+  if (!rawValue) return DEFAULT_REGEN_ACQUISITION_PROVIDER;
+
+  const normalized = rawValue.trim().toLowerCase();
+  if (normalized === "disabled") return "disabled";
+  if (normalized === "simulated") return "simulated";
+
+  throw new Error(
+    "REGEN_ACQUISITION_PROVIDER must be one of: disabled, simulated"
+  );
+}
+
+function parsePositiveInteger(
+  rawValue: string | undefined,
+  envName: string,
+  defaultValue: number
+): number {
+  if (!rawValue) return defaultValue;
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${envName} must be a positive integer`);
+  }
+
+  return parsed;
+}
+
+function parseRegenBurnProvider(
+  rawValue: string | undefined
+): "disabled" | "simulated" | "onchain" {
+  if (!rawValue) return DEFAULT_REGEN_BURN_PROVIDER;
+
+  const normalized = rawValue.trim().toLowerCase();
+  if (normalized === "disabled") return "disabled";
+  if (normalized === "simulated") return "simulated";
+  if (normalized === "onchain") return "onchain";
+
+  throw new Error(
+    "REGEN_BURN_PROVIDER must be one of: disabled, simulated, onchain"
+  );
+}
+
+function parseBatchCreditMixPolicy(
+  rawValue: string | undefined
+): "off" | "balanced" {
+  if (!rawValue) return DEFAULT_BATCH_CREDIT_MIX_POLICY;
+
+  const normalized = rawValue.trim().toLowerCase();
+  if (normalized === "off") return "off";
+  if (normalized === "balanced") return "balanced";
+
+  throw new Error(
+    "REGEN_BATCH_CREDIT_MIX_POLICY must be one of: off, balanced"
+  );
+}
 
 export function loadConfig(): Config {
   if (_config) return _config;
@@ -49,6 +142,16 @@ export function loadConfig(): Config {
     paymentProvider:
       (process.env.REGEN_PAYMENT_PROVIDER as "crypto" | "stripe") || "crypto",
     defaultJurisdiction: process.env.REGEN_DEFAULT_JURISDICTION || "US",
+    certificateBaseUrl:
+      process.env.REGEN_CERTIFICATE_BASE_URL ||
+      "https://regen.network/certificate",
+    certificateOutputDir:
+      process.env.REGEN_CERTIFICATE_OUTPUT_DIR || "data/certificates",
+    dashboardBaseUrl:
+      process.env.REGEN_DASHBOARD_BASE_URL || "https://regen.network/dashboard",
+    dashboardOutputDir:
+      process.env.REGEN_DASHBOARD_OUTPUT_DIR || "data/dashboards",
+    protocolFeeBps: parseProtocolFeeBps(process.env.REGEN_PROTOCOL_FEE_BPS),
 
     ecoBridgeApiUrl:
       process.env.ECOBRIDGE_API_URL || "https://api.bridge.eco",
@@ -61,6 +164,19 @@ export function loadConfig(): Config {
     ecoBridgeEvmMnemonic: process.env.ECOBRIDGE_EVM_MNEMONIC || undefined,
     ecoBridgeEvmDerivationPath:
       process.env.ECOBRIDGE_EVM_DERIVATION_PATH || "m/44'/60'/0'/0/0",
+    regenAcquisitionProvider: parseRegenAcquisitionProvider(
+      process.env.REGEN_ACQUISITION_PROVIDER
+    ),
+    regenAcquisitionRateUregenPerUsdc: parsePositiveInteger(
+      process.env.REGEN_ACQUISITION_RATE_UREGEN_PER_USDC,
+      "REGEN_ACQUISITION_RATE_UREGEN_PER_USDC",
+      DEFAULT_REGEN_ACQUISITION_RATE_UREGEN_PER_USDC
+    ),
+    batchCreditMixPolicy: parseBatchCreditMixPolicy(
+      process.env.REGEN_BATCH_CREDIT_MIX_POLICY
+    ),
+    regenBurnProvider: parseRegenBurnProvider(process.env.REGEN_BURN_PROVIDER),
+    regenBurnAddress: process.env.REGEN_BURN_ADDRESS?.trim() || undefined,
   };
 
   return _config;

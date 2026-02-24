@@ -6,6 +6,36 @@ import { browseAvailableCredits } from "./tools/credits.js";
 import { getRetirementCertificate } from "./tools/certificates.js";
 import { getImpactSummary } from "./tools/impact.js";
 import { retireCredits } from "./tools/retire.js";
+import {
+  listSubscriptionTiersTool,
+  manageSubscriptionTool,
+  syncAllSubscriptionPoolContributionsTool,
+  syncSubscriptionPoolContributionsTool,
+} from "./tools/subscriptions.js";
+import {
+  getPoolAccountingSummaryTool,
+  recordPoolContributionTool,
+} from "./tools/pool-accounting.js";
+import {
+  getMonthlyBatchExecutionHistoryTool,
+  getMonthlyReconciliationRunHistoryTool,
+  getMonthlyReconciliationStatusTool,
+  runMonthlyBatchRetirementTool,
+  runMonthlyReconciliationTool,
+} from "./tools/monthly-batch-retirement.js";
+import {
+  getSubscriberAttributionCertificateTool,
+  getSubscriberImpactDashboardTool,
+} from "./tools/attribution-dashboard.js";
+import { publishSubscriberCertificatePageTool } from "./tools/certificate-frontend.js";
+import { publishSubscriberDashboardPageTool } from "./tools/dashboard-frontend.js";
+import {
+  getIdentityAuthSessionTool,
+  linkIdentitySessionTool,
+  recoverIdentitySessionTool,
+  startIdentityAuthSessionTool,
+  verifyIdentityAuthSessionTool,
+} from "./tools/auth.js";
 import { loadConfig, isWalletConfigured } from "./config.js";
 import {
   fetchRegistry,
@@ -89,14 +119,41 @@ const server = new McpServer(
             "2. retire_via_ecobridge — generate a payment link using USDC, ETH, or any supported token",
           ]
         : []),
+      "5. list_subscription_tiers / manage_subscription — manage $1/$3/$5 recurring contribution plans",
+      "6. sync_subscription_pool_contributions — ingest paid Stripe invoices into pool accounting with idempotency",
+      "7. sync_all_subscription_pool_contributions — account-wide Stripe paid-invoice reconciliation with pagination",
+      "8. record_pool_contribution / get_pool_accounting_summary — track monthly subscription pool accounting",
+      "9. run_monthly_batch_retirement — execute the monthly pooled credit retirement batch",
+      "10. run_monthly_reconciliation — optional contribution sync + monthly batch in one operator workflow",
+      "11. get_monthly_batch_execution_history — query stored monthly batch run history with filters",
+      "12. get_monthly_reconciliation_status — operator readiness/status view for a target month",
+      "13. get_monthly_reconciliation_run_history — query stored reconciliation orchestration run history with filters",
+      "14. get_subscriber_impact_dashboard / get_subscriber_attribution_certificate — user-facing fractional impact views",
+      "15. publish_subscriber_certificate_page — generate a user-facing certificate HTML page and URL",
+      "16. publish_subscriber_dashboard_page — generate a user-facing dashboard HTML page and URL",
+      "17. start_identity_auth_session / verify_identity_auth_session / get_identity_auth_session — hardened identity auth session lifecycle",
+      "18. link_identity_session / recover_identity_session — identity linking and recovery flows",
       "",
       ...(walletMode
         ? [
             "The retire_credits tool executes real on-chain transactions. Credits are permanently retired.",
           ]
         : [
-            "All tools in this server are read-only and safe to call at any time.",
+            "Without a wallet, retire_credits returns marketplace links instead of broadcasting on-chain transactions.",
           ]),
+      "The manage_subscription tool can create, update, or cancel Stripe subscriptions.",
+      "The sync_subscription_pool_contributions tool ingests paid Stripe invoices into the pool ledger safely (duplicate-safe via invoice IDs).",
+      "The sync_all_subscription_pool_contributions tool performs account-wide paid invoice ingestion across customers with pagination controls.",
+      "Pool accounting tools support per-user contribution tracking and monthly aggregation summaries.",
+      "Monthly batch retirement uses pool accounting totals to execute one on-chain retirement per month.",
+      "The run_monthly_reconciliation tool orchestrates contribution sync and monthly batch execution in one call.",
+      "The get_monthly_batch_execution_history tool returns persisted batch run history for operator auditing and troubleshooting.",
+      "The get_monthly_reconciliation_status tool summarizes contribution totals, latest execution state, and readiness guidance for a month.",
+      "The get_monthly_reconciliation_run_history tool returns persisted orchestration history across success/failure/blocked preflight outcomes.",
+      "Subscriber dashboard tools expose fractional attribution and impact history per user.",
+      "Certificate frontend tool publishes shareable subscriber certificate pages to a configurable URL/path.",
+      "Dashboard frontend tool publishes shareable subscriber impact dashboard pages to a configurable URL/path.",
+      "Identity auth tools support verified email/OAuth attribution sessions with expiry, attempt limits, linking, and recovery.",
     ].join("\n"),
   }
 );
@@ -188,12 +245,873 @@ server.tool(
   }
 );
 
+// Tool: List available subscription tiers
+server.tool(
+  "list_subscription_tiers",
+  "Lists recurring contribution tiers for the Regen membership plans ($1/$3/$5 monthly) and shows whether Stripe price IDs are configured for each tier.",
+  {},
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async () => {
+    return listSubscriptionTiersTool();
+  }
+);
+
+// Tool: Create/update/check/cancel Stripe subscription state
+server.tool(
+  "manage_subscription",
+  "Manages customer subscription state for Regen contribution plans. Actions: subscribe to a tier, check current status, or cancel at period end.",
+  {
+    action: z
+      .enum(["subscribe", "status", "cancel"])
+      .describe("Operation to perform: subscribe, status, or cancel"),
+    tier: z
+      .enum(["starter", "growth", "impact"])
+      .optional()
+      .describe("Tier ID for subscribe: starter ($1), growth ($3), impact ($5)"),
+    email: z
+      .string()
+      .optional()
+      .describe("Customer email used for lookup or creation"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Existing Stripe customer ID (optional alternative to email)"),
+    full_name: z
+      .string()
+      .optional()
+      .describe("Customer display name (used when creating Stripe customer)"),
+    payment_method_id: z
+      .string()
+      .optional()
+      .describe("Stripe PaymentMethod ID to set as default for subscriptions"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({ action, tier, email, customer_id, full_name, payment_method_id }) => {
+    return manageSubscriptionTool(
+      action,
+      tier,
+      email,
+      customer_id,
+      full_name,
+      payment_method_id
+    );
+  }
+);
+
+// Tool: Sync paid Stripe invoices into pool accounting
+server.tool(
+  "sync_subscription_pool_contributions",
+  "Ingests paid Stripe invoices into pool accounting for a customer/email with idempotent deduplication by invoice ID. Useful for recurring subscription reconciliation.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Optional month filter in YYYY-MM format"),
+    email: z
+      .string()
+      .optional()
+      .describe("Customer email used for Stripe customer lookup"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID (optional alternative to email)"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Optional internal user ID override for pool attribution"),
+    limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Max invoices to fetch from Stripe (1-100, default 100)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({ month, email, customer_id, user_id, limit }) => {
+    return syncSubscriptionPoolContributionsTool(
+      month,
+      email,
+      customer_id,
+      user_id,
+      limit
+    );
+  }
+);
+
+// Tool: Sync paid Stripe invoices across all customers into pool accounting
+server.tool(
+  "sync_all_subscription_pool_contributions",
+  "Ingests paid Stripe invoices account-wide into pool accounting with idempotent deduplication by invoice ID. Supports pagination controls for large invoice sets.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Optional month filter in YYYY-MM format"),
+    limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Per-page Stripe invoice fetch size (1-100, default 100)"),
+    max_pages: z
+      .number()
+      .int()
+      .optional()
+      .describe("Maximum pages to fetch from Stripe invoices API (1-50, default 10)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({ month, limit, max_pages }) => {
+    return syncAllSubscriptionPoolContributionsTool(month, limit, max_pages);
+  }
+);
+
+// Tool: Record a contribution entry in the pool accounting ledger
+server.tool(
+  "record_pool_contribution",
+  "Records a contribution event for subscription pool accounting. Tracks per-user contribution ledger entries for monthly aggregation and batch retirement planning.",
+  {
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal stable user ID (optional if customer_id or email is provided)"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email (optional alternative identifier)"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID (optional alternative identifier)"),
+    subscription_id: z
+      .string()
+      .optional()
+      .describe("Stripe subscription ID associated with this contribution"),
+    source_event_id: z
+      .string()
+      .optional()
+      .describe("External event ID for idempotency (e.g., stripe invoice ID)"),
+    tier: z
+      .enum(["starter", "growth", "impact"])
+      .optional()
+      .describe("Tier ID; if amount is omitted this determines default amount ($1/$3/$5)"),
+    amount_usd: z
+      .number()
+      .optional()
+      .describe("Contribution amount in USD (decimal), e.g. 3 or 2.5"),
+    amount_usd_cents: z
+      .number()
+      .int()
+      .optional()
+      .describe("Contribution amount in USD cents"),
+    contributed_at: z
+      .string()
+      .optional()
+      .describe("ISO timestamp of the contribution event"),
+    source: z
+      .enum(["subscription", "manual", "adjustment"])
+      .optional()
+      .describe("Contribution source type"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({
+    user_id,
+    email,
+    customer_id,
+    subscription_id,
+    source_event_id,
+    tier,
+    amount_usd,
+    amount_usd_cents,
+    contributed_at,
+    source,
+  }) => {
+    return recordPoolContributionTool({
+      userId: user_id,
+      email,
+      customerId: customer_id,
+      subscriptionId: subscription_id,
+      externalEventId: source_event_id,
+      tierId: tier,
+      amountUsd: amount_usd,
+      amountUsdCents: amount_usd_cents,
+      contributedAt: contributed_at,
+      source,
+    });
+  }
+);
+
+// Tool: Query per-user or monthly pool accounting summaries
+server.tool(
+  "get_pool_accounting_summary",
+  "Returns pool accounting summaries for either a user or a month. Use user identifiers for lifetime/by-month user totals, or pass month for aggregate pool totals.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Month in YYYY-MM format for monthly pool summary"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID for user-specific summary"),
+    email: z
+      .string()
+      .optional()
+      .describe("Email for user-specific summary"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID for user-specific summary"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, user_id, email, customer_id }) => {
+    return getPoolAccountingSummaryTool(month, user_id, email, customer_id);
+  }
+);
+
+// Tool: Execute monthly pooled retirement run
+server.tool(
+  "run_monthly_batch_retirement",
+  "Executes a monthly pooled retirement batch using recorded pool contributions. Supports dry-run planning and real on-chain execution.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format, e.g. 2026-03"),
+    credit_type: z
+      .enum(["carbon", "biodiversity"])
+      .optional()
+      .describe("Optional credit type filter for the batch retirement"),
+    max_budget_usd: z
+      .number()
+      .optional()
+      .describe("Optional max budget in USD for this run"),
+    dry_run: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("If true, plans the batch without broadcasting a transaction"),
+    force: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("If true, allows rerunning a month even if a prior success exists"),
+    reason: z
+      .string()
+      .optional()
+      .describe("Optional retirement reason override"),
+    jurisdiction: z
+      .string()
+      .optional()
+      .describe("Optional retirement jurisdiction override"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({
+    month,
+    credit_type,
+    max_budget_usd,
+    dry_run,
+    force,
+    reason,
+    jurisdiction,
+  }) => {
+    return runMonthlyBatchRetirementTool(
+      month,
+      credit_type,
+      max_budget_usd,
+      dry_run,
+      force,
+      reason,
+      jurisdiction
+    );
+  }
+);
+
+// Tool: Reconcile contributions and run monthly batch in one operation
+server.tool(
+  "run_monthly_reconciliation",
+  "Runs monthly pool reconciliation workflow. Optionally syncs paid Stripe invoices first, then executes monthly pooled retirement planning/execution.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format, e.g. 2026-03"),
+    credit_type: z
+      .enum(["carbon", "biodiversity"])
+      .optional()
+      .describe("Optional credit type filter for the batch retirement"),
+    max_budget_usd: z
+      .number()
+      .optional()
+      .describe("Optional max budget in USD for this run"),
+    dry_run: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("If true, plans the batch without broadcasting a transaction"),
+    preflight_only: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "If true, runs sync + preflight checks only and skips monthly batch execution"
+      ),
+    force: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("If true, allows rerunning a month even if a prior success exists"),
+    allow_partial_sync: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "If true, allows batch execution to continue when all-customer sync is truncated by invoice_max_pages"
+      ),
+    allow_execute_without_dry_run: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "If true, allows dry_run=false execution even when no latest dry-run record exists for the target month and credit type"
+      ),
+    reason: z
+      .string()
+      .optional()
+      .describe("Optional retirement reason override"),
+    jurisdiction: z
+      .string()
+      .optional()
+      .describe("Optional retirement jurisdiction override"),
+    sync_scope: z
+      .enum(["none", "customer", "all_customers"])
+      .optional()
+      .default("all_customers")
+      .describe("Contribution sync scope before batch execution"),
+    email: z
+      .string()
+      .optional()
+      .describe("Customer email for sync_scope=customer"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID for sync_scope=customer"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Optional internal user ID override for synced contributions"),
+    invoice_limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Invoice fetch size per request (1-100)"),
+    invoice_max_pages: z
+      .number()
+      .int()
+      .optional()
+      .describe("Max pages for account-wide sync (1-50)"),
+    sync_timeout_ms: z
+      .number()
+      .int()
+      .optional()
+      .describe("Optional timeout for contribution sync phase (1-300000 ms)"),
+    batch_timeout_ms: z
+      .number()
+      .int()
+      .optional()
+      .describe("Optional timeout for monthly batch execution phase (1-300000 ms)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async ({
+    month,
+    credit_type,
+    max_budget_usd,
+    dry_run,
+    preflight_only,
+    force,
+    allow_partial_sync,
+    allow_execute_without_dry_run,
+    reason,
+    jurisdiction,
+    sync_scope,
+    email,
+    customer_id,
+    user_id,
+    invoice_limit,
+    invoice_max_pages,
+    sync_timeout_ms,
+    batch_timeout_ms,
+  }) => {
+    return runMonthlyReconciliationTool({
+      month,
+      creditType: credit_type,
+      maxBudgetUsd: max_budget_usd,
+      dryRun: dry_run,
+      preflightOnly: preflight_only,
+      force,
+      allowPartialSync: allow_partial_sync,
+      allowExecuteWithoutDryRun: allow_execute_without_dry_run,
+      reason,
+      jurisdiction,
+      syncScope: sync_scope,
+      email,
+      customerId: customer_id,
+      userId: user_id,
+      invoiceLimit: invoice_limit,
+      invoiceMaxPages: invoice_max_pages,
+      syncTimeoutMs: sync_timeout_ms,
+      batchTimeoutMs: batch_timeout_ms,
+    });
+  }
+);
+
+// Tool: Query stored monthly batch execution history
+server.tool(
+  "get_monthly_batch_execution_history",
+  "Returns persisted monthly batch execution history records with optional filters for month, status, credit type, dry-run mode, and result count limit.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Optional month filter in YYYY-MM format"),
+    status: z
+      .enum(["success", "failed", "dry_run"])
+      .optional()
+      .describe("Optional execution status filter"),
+    credit_type: z
+      .enum(["carbon", "biodiversity"])
+      .optional()
+      .describe("Optional credit type filter"),
+    dry_run: z
+      .boolean()
+      .optional()
+      .describe("Optional dry-run mode filter"),
+    limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Max records to return (1-200, default 50)"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, status, credit_type, dry_run, limit }) => {
+    return getMonthlyBatchExecutionHistoryTool(
+      month,
+      status,
+      credit_type,
+      dry_run,
+      limit
+    );
+  }
+);
+
+// Tool: Query monthly reconciliation readiness and latest execution state
+server.tool(
+  "get_monthly_reconciliation_status",
+  "Returns operator-focused monthly reconciliation status including contribution totals, latest execution state, protocol fee/net budget preview, and readiness guidance.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format"),
+    credit_type: z
+      .enum(["carbon", "biodiversity"])
+      .optional()
+      .describe("Optional credit type filter for latest execution lookup"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, credit_type }) => {
+    return getMonthlyReconciliationStatusTool(month, credit_type);
+  }
+);
+
+// Tool: Query persisted monthly reconciliation orchestration run history
+server.tool(
+  "get_monthly_reconciliation_run_history",
+  "Returns persisted monthly reconciliation orchestration history with optional filters for month, status, credit type, and record limit.",
+  {
+    month: z
+      .string()
+      .optional()
+      .describe("Optional month filter in YYYY-MM format"),
+    status: z
+      .enum(["in_progress", "completed", "blocked", "failed"])
+      .optional()
+      .describe("Optional reconciliation run status filter"),
+    credit_type: z
+      .enum(["carbon", "biodiversity"])
+      .optional()
+      .describe("Optional credit type filter"),
+    limit: z
+      .number()
+      .int()
+      .optional()
+      .describe("Max records to return (1-200, default 50)"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, status, credit_type, limit }) => {
+    return getMonthlyReconciliationRunHistoryTool(
+      month,
+      status,
+      credit_type,
+      limit
+    );
+  }
+);
+
+// Tool: User-facing fractional impact dashboard
+server.tool(
+  "get_subscriber_impact_dashboard",
+  "Returns a user-facing dashboard of pooled contribution history and fractional retirement attribution impact.",
+  {
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ user_id, email, customer_id }) => {
+    return getSubscriberImpactDashboardTool(user_id, email, customer_id);
+  }
+);
+
+// Tool: User-facing per-month attribution certificate
+server.tool(
+  "get_subscriber_attribution_certificate",
+  "Returns a user-facing certificate for a subscriber's fractional attribution in a specific monthly pooled retirement batch.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ month, user_id, email, customer_id }) => {
+    return getSubscriberAttributionCertificateTool(
+      month,
+      user_id,
+      email,
+      customer_id
+    );
+  }
+);
+
+// Tool: Publish subscriber certificate frontend page
+server.tool(
+  "publish_subscriber_certificate_page",
+  "Publishes a user-facing HTML certificate page for a subscriber's monthly fractional attribution, returning both a public URL and local file path.",
+  {
+    month: z
+      .string()
+      .describe("Target month in YYYY-MM format"),
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ month, user_id, email, customer_id }) => {
+    return publishSubscriberCertificatePageTool(
+      month,
+      user_id,
+      email,
+      customer_id
+    );
+  }
+);
+
+// Tool: Publish subscriber dashboard frontend page
+server.tool(
+  "publish_subscriber_dashboard_page",
+  "Publishes a user-facing HTML dashboard page with contribution totals, attribution history, and subscription state, returning both a public URL and local file path.",
+  {
+    user_id: z
+      .string()
+      .optional()
+      .describe("Internal user ID"),
+    email: z
+      .string()
+      .optional()
+      .describe("User email"),
+    customer_id: z
+      .string()
+      .optional()
+      .describe("Stripe customer ID"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ user_id, email, customer_id }) => {
+    return publishSubscriberDashboardPageTool(user_id, email, customer_id);
+  }
+);
+
+// Tool: Start identity auth session
+server.tool(
+  "start_identity_auth_session",
+  "Starts an identity verification session using email or OAuth. Returns session metadata and the challenge material needed to verify.",
+  {
+    method: z
+      .enum(["email", "oauth"])
+      .describe("Auth method to start"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Beneficiary email (required for method=email, optional for method=oauth)"),
+    beneficiary_name: z
+      .string()
+      .optional()
+      .describe("Optional beneficiary display name"),
+    auth_provider: z
+      .string()
+      .optional()
+      .describe("OAuth provider (required for method=oauth)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ method, beneficiary_email, beneficiary_name, auth_provider }) => {
+    return startIdentityAuthSessionTool(
+      method,
+      beneficiary_email,
+      beneficiary_name,
+      auth_provider
+    );
+  }
+);
+
+// Tool: Verify identity auth session
+server.tool(
+  "verify_identity_auth_session",
+  "Verifies an identity auth session. Email sessions require verification_code; OAuth sessions require oauth_state_token + auth_provider + auth_subject.",
+  {
+    session_id: z
+      .string()
+      .describe("Identity auth session ID"),
+    method: z
+      .enum(["email", "oauth"])
+      .describe("Session method"),
+    verification_code: z
+      .string()
+      .optional()
+      .describe("Email verification code (required for method=email)"),
+    oauth_state_token: z
+      .string()
+      .optional()
+      .describe("OAuth state token issued at session start (required for method=oauth)"),
+    auth_provider: z
+      .string()
+      .optional()
+      .describe("OAuth provider (required for method=oauth)"),
+    auth_subject: z
+      .string()
+      .optional()
+      .describe("OAuth subject/user ID (required for method=oauth)"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Optional verified email to store during oauth verification"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({
+    session_id,
+    method,
+    verification_code,
+    oauth_state_token,
+    auth_provider,
+    auth_subject,
+    beneficiary_email,
+  }) => {
+    return verifyIdentityAuthSessionTool({
+      sessionId: session_id,
+      method,
+      verificationCode: verification_code,
+      oauthStateToken: oauth_state_token,
+      authProvider: auth_provider,
+      authSubject: auth_subject,
+      beneficiaryEmail: beneficiary_email,
+    });
+  }
+);
+
+// Tool: Get identity auth session status
+server.tool(
+  "get_identity_auth_session",
+  "Returns status and metadata for an identity auth session (pending/verified/expired/locked).",
+  {
+    session_id: z
+      .string()
+      .describe("Identity auth session ID"),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  async ({ session_id }) => {
+    return getIdentityAuthSessionTool(session_id);
+  }
+);
+
+// Tool: Link verified identity session to internal user
+server.tool(
+  "link_identity_session",
+  "Links a verified identity auth session to an internal user ID for attribution continuity.",
+  {
+    session_id: z
+      .string()
+      .describe("Verified auth session ID"),
+    user_id: z
+      .string()
+      .describe("Internal user ID to link"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ session_id, user_id }) => {
+    return linkIdentitySessionTool(session_id, user_id);
+  }
+);
+
+// Tool: Start or complete identity recovery
+server.tool(
+  "recover_identity_session",
+  "Handles identity session recovery. action=start issues a recovery token by verified email; action=complete consumes token and issues a fresh verified session.",
+  {
+    action: z
+      .enum(["start", "complete"])
+      .describe("Recovery action"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Verified beneficiary email (required for action=start)"),
+    recovery_token: z
+      .string()
+      .optional()
+      .describe("Recovery token (required for action=complete)"),
+  },
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  async ({ action, beneficiary_email, recovery_token }) => {
+    return recoverIdentitySessionTool(action, beneficiary_email, recovery_token);
+  }
+);
+
 // Tool: Retire credits — either direct on-chain execution or marketplace link
 server.tool(
   "retire_credits",
   walletMode
-    ? "Purchases and retires ecocredits directly on-chain on Regen Network. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits. Credits are permanently retired on-chain in a single transaction. Returns a retirement certificate with on-chain proof."
-    : "Generates a link to retire ecocredits on Regen Network marketplace via credit card. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits for any reason. Credits are permanently retired on-chain with the user's name as beneficiary. No crypto wallet needed. Returns a direct marketplace link and step-by-step instructions.",
+    ? "Purchases and retires ecocredits directly on-chain on Regen Network. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits. Credits are permanently retired on-chain in a single transaction. Supports beneficiary attribution via name/email/OAuth metadata and returns a retirement certificate with on-chain proof."
+    : "Generates a link to retire ecocredits on Regen Network marketplace via credit card. Use this when the user wants to take action — offset their footprint, fund ecological regeneration, or retire credits for any reason. Credits are permanently retired on-chain with optional identity attribution metadata. No crypto wallet needed. Returns a direct marketplace link and step-by-step instructions.",
   {
     credit_class: z
       .string()
@@ -209,6 +1127,24 @@ server.tool(
       .string()
       .optional()
       .describe("Name to appear on the retirement certificate"),
+    beneficiary_email: z
+      .string()
+      .optional()
+      .describe("Email to attribute to the retirement certificate"),
+    auth_provider: z
+      .string()
+      .optional()
+      .describe("OAuth provider name for identity attribution (e.g., google, github)"),
+    auth_subject: z
+      .string()
+      .optional()
+      .describe("OAuth subject/user ID for identity attribution"),
+    auth_session_id: z
+      .string()
+      .optional()
+      .describe(
+        "Verified identity auth session ID from verify_identity_auth_session; overrides direct auth/email fields when present"
+      ),
     jurisdiction: z
       .string()
       .optional()
@@ -226,8 +1162,28 @@ server.tool(
     idempotentHint: !walletMode,
     openWorldHint: walletMode,
   },
-  async ({ credit_class, quantity, beneficiary_name, jurisdiction, reason }) => {
-    return retireCredits(credit_class, quantity, beneficiary_name, jurisdiction, reason);
+  async ({
+    credit_class,
+    quantity,
+    beneficiary_name,
+    beneficiary_email,
+    auth_provider,
+    auth_subject,
+    auth_session_id,
+    jurisdiction,
+    reason,
+  }) => {
+    return retireCredits(
+      credit_class,
+      quantity,
+      beneficiary_name,
+      jurisdiction,
+      reason,
+      beneficiary_email,
+      auth_provider,
+      auth_subject,
+      auth_session_id
+    );
   }
 );
 

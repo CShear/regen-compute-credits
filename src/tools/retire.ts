@@ -15,6 +15,10 @@ import { waitForRetirement } from "../services/indexer.js";
 import { CryptoPaymentProvider } from "../services/payment/crypto.js";
 import { StripePaymentProvider } from "../services/payment/stripe-stub.js";
 import type { PaymentProvider } from "../services/payment/types.js";
+import { appendIdentityToReason, captureIdentity } from "../services/identity.js";
+import { AuthSessionService } from "../services/auth/service.js";
+
+const authSessions = new AuthSessionService();
 
 function getMarketplaceLink(): string {
   const config = loadConfig();
@@ -25,7 +29,9 @@ function marketplaceFallback(
   message: string,
   creditClass?: string,
   quantity?: number,
-  beneficiaryName?: string
+  beneficiaryName?: string,
+  beneficiaryEmail?: string,
+  authProvider?: string
 ): { content: Array<{ type: "text"; text: string }> } {
   const url = getMarketplaceLink();
   const lines: string[] = [
@@ -39,7 +45,9 @@ function marketplaceFallback(
 
   if (creditClass) lines.push(`**Credit class**: ${creditClass}`);
   if (quantity) lines.push(`**Quantity**: ${quantity} credits`);
-  if (beneficiaryName) lines.push(`**Beneficiary**: ${beneficiaryName}`);
+  if (beneficiaryName) lines.push(`**Beneficiary name**: ${beneficiaryName}`);
+  if (beneficiaryEmail) lines.push(`**Beneficiary email**: ${beneficiaryEmail}`);
+  if (authProvider) lines.push(`**Auth provider**: ${authProvider}`);
 
   lines.push(
     ``,
@@ -85,28 +93,97 @@ export async function retireCredits(
   quantity?: number,
   beneficiaryName?: string,
   jurisdiction?: string,
-  reason?: string
+  reason?: string,
+  beneficiaryEmail?: string,
+  authProvider?: string,
+  authSubject?: string,
+  authSessionId?: string
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const providedAuthSessionId = authSessionId?.trim();
+  let verifiedSessionIdentity: ReturnType<typeof captureIdentity> | undefined;
+  if (providedAuthSessionId) {
+    try {
+      verifiedSessionIdentity =
+        await authSessions.resolveVerifiedIdentity(providedAuthSessionId);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return marketplaceFallback(
+        `Identity auth session failed: ${errMsg}`,
+        creditClass,
+        quantity,
+        beneficiaryName,
+        beneficiaryEmail,
+        authProvider
+      );
+    }
+  }
+
+  const effectiveBeneficiaryName =
+    verifiedSessionIdentity?.beneficiaryName || beneficiaryName;
+  const effectiveBeneficiaryEmail = providedAuthSessionId
+    ? verifiedSessionIdentity?.beneficiaryEmail
+    : beneficiaryEmail;
+  const effectiveAuthProvider = providedAuthSessionId
+    ? verifiedSessionIdentity?.authProvider
+    : authProvider;
+  const effectiveAuthSubject = providedAuthSessionId
+    ? verifiedSessionIdentity?.authSubject
+    : authSubject;
+
+  let identity: ReturnType<typeof captureIdentity> = { authMethod: "none" };
+  try {
+    identity = captureIdentity({
+      beneficiaryName: effectiveBeneficiaryName,
+      beneficiaryEmail: effectiveBeneficiaryEmail,
+      authProvider: effectiveAuthProvider,
+      authSubject: effectiveAuthSubject,
+    });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return marketplaceFallback(
+      `Identity capture failed: ${errMsg}`,
+      creditClass,
+      quantity,
+      effectiveBeneficiaryName,
+      effectiveBeneficiaryEmail,
+      effectiveAuthProvider
+    );
+  }
+
   // Path A: No wallet → marketplace link (fully backward compatible)
   if (!isWalletConfigured()) {
-    return marketplaceFallback("", creditClass, quantity, beneficiaryName);
+    return marketplaceFallback(
+      "",
+      creditClass,
+      quantity,
+      identity.beneficiaryName,
+      identity.beneficiaryEmail,
+      identity.authProvider
+    );
   }
 
   // Path B: Direct on-chain retirement
   const config = loadConfig();
   const retireJurisdiction = jurisdiction || config.defaultJurisdiction;
-  const retireReason =
-    reason || "Regenerative contribution via Regen for AI";
+  const retireReasonBase =
+    reason || "Regenerative contribution via Regen Compute Credits MCP server";
+  const retireReason = appendIdentityToReason(retireReasonBase, identity);
   const retireQuantity = quantity || 1;
 
   try {
     // 1. Initialize wallet
     const { address } = await initWallet();
 
-    // 2. Find best-priced sell orders
+    // 2. Select payment provider and find best-priced sell orders.
+    // Stripe flow expects USDC-denominated orders so we can authorize in fiat.
+    const provider = getPaymentProvider();
+    const preferredDenom = provider.name === "stripe" ? "USDC" : undefined;
+
+    // 3. Find best-priced sell orders
     const selection = await selectBestOrders(
       creditClass ? (creditClass.startsWith("C") ? "carbon" : "biodiversity") : undefined,
-      retireQuantity
+      retireQuantity,
+      preferredDenom
     );
 
     if (selection.orders.length === 0) {
@@ -114,7 +191,9 @@ export async function retireCredits(
         "No matching sell orders found on-chain. Try the marketplace instead.",
         creditClass,
         quantity,
-        beneficiaryName
+        identity.beneficiaryName,
+        identity.beneficiaryEmail,
+        identity.authProvider
       );
     }
 
@@ -125,12 +204,13 @@ export async function retireCredits(
           `You can try a smaller quantity or use the marketplace.`,
         creditClass,
         quantity,
-        beneficiaryName
+        identity.beneficiaryName,
+        identity.beneficiaryEmail,
+        identity.authProvider
       );
     }
 
-    // 3. Authorize payment (balance check for crypto, hold for Stripe)
-    const provider = getPaymentProvider();
+    // 4. Authorize payment (balance check for crypto, hold for Stripe)
     const auth = await provider.authorizePayment(
       selection.totalCostMicro,
       selection.paymentDenom,
@@ -148,11 +228,13 @@ export async function retireCredits(
           `Insufficient wallet balance. Need ${displayCost} to purchase ${retireQuantity} credits.`,
         creditClass,
         quantity,
-        beneficiaryName
+        identity.beneficiaryName,
+        identity.beneficiaryEmail,
+        identity.authProvider
       );
     }
 
-    // 4. Build and broadcast MsgBuyDirect
+    // 5. Build and broadcast MsgBuyDirect
     const buyOrders = selection.orders.map((order) => ({
       sellOrderId: BigInt(order.sellOrderId),
       quantity: order.quantity,
@@ -188,7 +270,9 @@ export async function retireCredits(
         `Transaction broadcast failed: ${errMsg}`,
         creditClass,
         quantity,
-        beneficiaryName
+        identity.beneficiaryName,
+        identity.beneficiaryEmail,
+        identity.authProvider
       );
     }
 
@@ -203,17 +287,19 @@ export async function retireCredits(
         `Transaction rejected (code ${txResult.code}): ${txResult.rawLog || "unknown error"}`,
         creditClass,
         quantity,
-        beneficiaryName
+        identity.beneficiaryName,
+        identity.beneficiaryEmail,
+        identity.authProvider
       );
     }
 
-    // 5. Capture payment (no-op for crypto)
+    // 6. Capture payment (no-op for crypto)
     await provider.capturePayment(auth.id);
 
-    // 6. Poll indexer for retirement certificate
+    // 7. Poll indexer for retirement certificate
     const retirement = await waitForRetirement(txResult.transactionHash);
 
-    // 7. Build success response
+    // 8. Build success response
     const displayCost = formatAmount(
       selection.totalCostMicro,
       selection.exponent,
@@ -230,13 +316,22 @@ export async function retireCredits(
       `| Credits Retired | ${selection.totalQuantity} |`,
       `| Cost | ${displayCost} |`,
       `| Jurisdiction | ${retireJurisdiction} |`,
-      `| Reason | ${retireReason} |`,
+      `| Reason | ${retireReasonBase} |`,
       `| Transaction Hash | \`${txResult.transactionHash}\` |`,
       `| Block Height | ${txResult.height} |`,
     ];
 
-    if (beneficiaryName) {
-      lines.push(`| Beneficiary | ${beneficiaryName} |`);
+    if (identity.beneficiaryName) {
+      lines.push(`| Beneficiary Name | ${identity.beneficiaryName} |`);
+    }
+    if (identity.beneficiaryEmail) {
+      lines.push(`| Beneficiary Email | ${identity.beneficiaryEmail} |`);
+    }
+    if (identity.authProvider) {
+      lines.push(`| Auth Provider | ${identity.authProvider} |`);
+    }
+    if (identity.authSubject) {
+      lines.push(`| Auth Subject | ${identity.authSubject} |`);
     }
 
     if (retirement) {
@@ -267,7 +362,9 @@ export async function retireCredits(
       `Direct retirement failed: ${errMsg}`,
       creditClass,
       quantity,
-      beneficiaryName
+      identity.beneficiaryName || effectiveBeneficiaryName,
+      identity.beneficiaryEmail || effectiveBeneficiaryEmail,
+      identity.authProvider || effectiveAuthProvider
     );
   }
 }
