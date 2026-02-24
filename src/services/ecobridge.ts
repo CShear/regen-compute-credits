@@ -35,6 +35,13 @@ export interface EcoBridgeProject {
   description: string | null;
   creditClass: string | null;
   registryUrl: string | null;
+  evmWallet: string | null;
+  solanaWallet: string | null;
+  price: number | null;
+  unit: string | null;
+  location: string | null;
+  type: string | null;
+  batch: string | null;
 }
 
 export interface EcoBridgeRegistry {
@@ -211,6 +218,13 @@ function parseRegistry(raw: unknown): EcoBridgeRegistry {
         : proj.registry_url
           ? String(proj.registry_url)
           : null,
+      evmWallet: proj.evmWallet ? String(proj.evmWallet) : null,
+      solanaWallet: proj.solanaWallet ? String(proj.solanaWallet) : null,
+      price: typeof proj.price === "number" ? proj.price : null,
+      unit: proj.unit ? String(proj.unit) : null,
+      location: proj.location ? String(proj.location) : null,
+      type: proj.type ? String(proj.type) : null,
+      batch: proj.batch ? String(proj.batch) : null,
     };
   });
 
@@ -289,14 +303,15 @@ export function buildRetirementUrl(params: RetirementUrlParams): string {
   const config = loadConfig();
   const apiUrl = config.ecoBridgeApiUrl;
 
-  // Derive the widget (app) URL from the API URL.
-  // Canonical: https://api.bridge.eco → https://app.bridge.eco
+  // Derive the widget URL from the API URL.
+  // Canonical: https://api.bridge.eco → https://bridge.eco
+  // The widget lives at the root domain, not an "app." subdomain.
   // For custom deployments, fall back to the api URL itself.
   let widgetBase: string;
   try {
     const apiParsed = new URL(apiUrl);
     if (apiParsed.hostname.startsWith("api.")) {
-      apiParsed.hostname = "app." + apiParsed.hostname.slice("api.".length);
+      apiParsed.hostname = apiParsed.hostname.slice("api.".length);
     }
     widgetBase = apiParsed.toString().replace(/\/$/, "");
   } catch {
@@ -314,17 +329,111 @@ export function buildRetirementUrl(params: RetirementUrlParams): string {
   }
 
   // Deep-link query params per bridge.eco widget spec
+  // See: https://docs.bridge.eco/docs/guides/deep-linking/
+  // The "impact" tab handles credit retirement funding.
+  url.searchParams.set("tab", "impact");
   if (params.chain) url.searchParams.set("chain", params.chain);
   if (params.token) url.searchParams.set("token", params.token);
   if (params.projectId) url.searchParams.set("project", params.projectId);
   if (params.amount != null)
     url.searchParams.set("amount", String(params.amount));
-  if (params.beneficiaryName)
-    url.searchParams.set("beneficiary", params.beneficiaryName);
-  if (params.retirementReason)
-    url.searchParams.set("reason", params.retirementReason);
-  if (params.jurisdiction)
-    url.searchParams.set("jurisdiction", params.jurisdiction);
 
   return url.toString();
+}
+
+/**
+ * Get a specific project from the registry by ID or partial name match.
+ */
+export async function getProject(
+  idOrName: string | number
+): Promise<EcoBridgeProject | null> {
+  const registry = await fetchRegistry();
+  // Try numeric ID first
+  const numId = typeof idOrName === "number" ? idOrName : parseInt(String(idOrName), 10);
+  if (!isNaN(numId)) {
+    const byId = registry.projects.find((p) => String(p.id) === String(numId));
+    if (byId) return byId;
+  }
+  // Partial name match
+  const needle = String(idOrName).toLowerCase();
+  return (
+    registry.projects.find((p) => p.name.toLowerCase().includes(needle)) ??
+    null
+  );
+}
+
+/**
+ * Get all projects from the registry.
+ */
+export async function getProjects(): Promise<EcoBridgeProject[]> {
+  const registry = await fetchRegistry();
+  return registry.projects;
+}
+
+// --- Transaction tracking ---
+
+export interface EcoBridgeTransaction {
+  txHash: string;
+  status: string;
+  blockchain: string;
+  amount: number | null;
+  tokenSymbol: string | null;
+  projectName: string | null;
+  retirementDetails: unknown | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+/**
+ * Poll a transaction on bridge.eco until it reaches a terminal state.
+ * States: PENDING → DETECTED → CONVERTED → CALCULATED → RETIRED → FEE_CALCULATED → RWI_MINTED
+ */
+export async function pollTransaction(
+  txHash: string,
+  maxAttempts = 60,
+  intervalMs = 5000
+): Promise<EcoBridgeTransaction> {
+  const terminalStates = new Set(["RETIRED", "RWI_MINTED", "FEE_CALCULATED", "FAILED", "ERROR"]);
+
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const data = await fetchJSON<Record<string, unknown>>(
+        `/transactions/${txHash}`
+      );
+      const status = String(data.status ?? "UNKNOWN");
+      const tx: EcoBridgeTransaction = {
+        txHash,
+        status,
+        blockchain: String(data.blockchain ?? data.chain ?? ""),
+        amount: typeof data.amount === "number" ? data.amount : null,
+        tokenSymbol: data.tokenSymbol ? String(data.tokenSymbol) : null,
+        projectName: data.projectName ? String(data.projectName) : null,
+        retirementDetails: data.retirementDetails ?? data.retirement ?? null,
+        createdAt: data.createdAt ? String(data.createdAt) : null,
+        updatedAt: data.updatedAt ? String(data.updatedAt) : null,
+      };
+
+      if (terminalStates.has(status)) {
+        return tx;
+      }
+
+      // Log progress
+      console.error(
+        `[ecoBridge] tx ${txHash.slice(0, 10)}... status: ${status} (attempt ${i + 1}/${maxAttempts})`
+      );
+    } catch (err) {
+      // Transaction may not be indexed yet — keep polling
+      if (i > 5) {
+        console.error(
+          `[ecoBridge] tx ${txHash.slice(0, 10)}... not found yet (attempt ${i + 1}/${maxAttempts})`
+        );
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+
+  throw new Error(
+    `ecoBridge transaction ${txHash} did not reach terminal state after ${maxAttempts} attempts (${(maxAttempts * intervalMs) / 1000}s).`
+  );
 }

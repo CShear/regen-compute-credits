@@ -14,7 +14,7 @@
                        │ MCP Protocol (stdio)
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Regen Compute Credits MCP Server                           │
+│  Regen for AI MCP Server                           │
 │                                                             │
 │  Tools:                                                     │
 │  ┌─────────────────────┐  ┌────────────────────────┐       │

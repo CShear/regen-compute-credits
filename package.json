@@ -1,11 +1,11 @@
 {
-  "name": "regen-compute-credits",
-  "version": "0.2.0",
-  "description": "MCP server that connects AI compute usage to verified ecological credit retirement on Regen Network. Estimate your session footprint, browse carbon and biodiversity credits, and retire them on-chain via credit card.",
+  "name": "regen-for-ai",
+  "version": "0.3.0",
+  "description": "Regenerative AI — fund verified ecological regeneration from your AI sessions via Regen Network. Estimate your footprint, browse carbon and biodiversity credits, and retire them on-chain via credit card.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "regen-compute-credits": "dist/index.js"
+    "regen-for-ai": "dist/index.js"
   },
   "files": [
     "dist",
@@ -29,7 +29,8 @@
     "ecocredits",
     "carbon-credits",
     "biodiversity-credits",
-    "carbon-offset",
+    "regenerative-ai",
+    "regen-for-ai",
     "ai-compute",
     "sustainability",
     "climate",
@@ -40,13 +41,13 @@
   ],
   "author": "CShear",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/CShear/regen-compute-credits#readme",
+  "homepage": "https://github.com/CShear/regen-for-ai#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CShear/regen-compute-credits.git"
+    "url": "git+https://github.com/CShear/regen-for-ai.git"
   },
   "bugs": {
-    "url": "https://github.com/CShear/regen-compute-credits/issues"
+    "url": "https://github.com/CShear/regen-for-ai/issues"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -55,7 +56,8 @@
     "@cosmjs/proto-signing": "^0.32.4",
     "@cosmjs/stargate": "^0.32.4",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@regen-network/api": "^1.0.0-alpha8"
+    "@regen-network/api": "^1.0.0-alpha8",
+    "ethers": "^6.16.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

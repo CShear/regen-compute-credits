@@ -1,15 +1,15 @@
-# Regen Compute Credits
+# Regen for AI
 
-**An MCP server that funds verified ecological regeneration from AI compute usage via Regen Network.**
+**Regenerative AI — fund verified ecological regeneration from your AI sessions via Regen Network.**
 
-Every AI session consumes energy. Regen Compute Credits turns that consumption into a funding mechanism for verified ecological regeneration — retiring real ecocredits on-chain through Regen Network's marketplace, with immutable proof of impact.
+Every AI session consumes energy. Regen for AI turns that consumption into a funding mechanism for verified ecological regeneration — retiring real ecocredits on-chain through Regen Network's marketplace, with immutable proof of impact.
 
 ## Quick Start
 
 ### Install via npx (recommended)
 
 ```bash
-claude mcp add -s user regen-compute-credits -- npx regen-compute-credits
+claude mcp add -s user regen-for-ai -- npx regen-for-ai
 ```
 
 That's it. The server is now available in all your Claude Code sessions.
@@ -21,10 +21,10 @@ Add to your Claude Code config (`~/.claude.json`):
 ```json
 {
   "mcpServers": {
-    "regen-compute-credits": {
+    "regen-for-ai": {
       "type": "stdio",
       "command": "npx",
-      "args": ["regen-compute-credits"]
+      "args": ["regen-for-ai"]
     }
   }
 }
@@ -36,7 +36,7 @@ Add to your Claude Code config (`~/.claude.json`):
 AI Session (Claude Code, Cursor, etc.)
     │
     ▼
-Regen Compute Credits MCP Server
+Regen for AI MCP Server
     │
     ├── Estimates session ecological footprint
     ├── Browses available credits on Regen Marketplace
@@ -314,8 +314,8 @@ The server also provides prompt templates for common workflows:
 ## Development
 
 ```bash
-git clone https://github.com/CShear/regen-compute-credits.git
-cd regen-compute-credits
+git clone https://github.com/CShear/regen-for-ai.git
+cd regen-for-ai
 npm install
 cp .env.example .env
 npm run dev       # Watch mode with hot reload

@@ -1,11 +1,11 @@
-# Contributing to Regen Compute Credits
+# Contributing to Regen for AI
 
 Thank you for your interest in contributing! This project connects AI compute usage to verified ecological regeneration through Regen Network.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/regen-compute-credits.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/regen-for-ai.git`
 3. Install dependencies: `npm install`
 4. Copy environment config: `cp .env.example .env`
 5. Start development: `npm run dev`

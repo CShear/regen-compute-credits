@@ -11,8 +11,16 @@ import {
   fetchRegistry,
   getSupportedTokens,
   getTokenPrice,
+  getProject,
+  getProjects,
+  pollTransaction,
   buildRetirementUrl,
 } from "./services/ecobridge.js";
+import {
+  sendUsdc,
+  isEvmWalletConfigured,
+  getEvmAddress,
+} from "./services/evm-wallet.js";
 
 // Load config early so isWalletConfigured() is available for annotations
 loadConfig();
@@ -23,12 +31,12 @@ const ecoBridgeEnabled = config.ecoBridgeEnabled;
 
 const server = new McpServer(
   {
-    name: "regen-compute-credits",
-    version: "0.2.0",
+    name: "regen-for-ai",
+    version: "0.3.0",
   },
   {
     instructions: [
-      "Regen Compute Credits connects AI compute usage to verified ecological credit retirement on Regen Network.",
+      "Regen for AI connects AI compute usage to verified ecological credit retirement on Regen Network.",
       "",
       "USE THIS SERVER WHEN:",
       "- The user asks about the environmental or ecological impact of their AI usage",
@@ -306,123 +314,142 @@ if (ecoBridgeEnabled) {
     }
   );
 
-  // Tool: Generate an ecoBridge payment link for credit retirement
+  // Tool: Retire credits via ecoBridge by sending tokens to project wallet
   server.tool(
     "retire_via_ecobridge",
-    "Generates an ecoBridge payment link to retire ecocredits on Regen Network using any supported token on any supported chain. Use this when the user wants to pay with tokens like USDC, USDT, ETH on Ethereum, Polygon, Arbitrum, Base, or other chains instead of native REGEN tokens.",
+    isEvmWalletConfigured()
+      ? "Sends USDC on an EVM chain (Base, Ethereum, etc.) to an ecoBridge project wallet to retire ecocredits on Regen Network. Executes a real on-chain token transfer and polls bridge.eco until the retirement is confirmed. This is a destructive action — tokens are spent permanently."
+      : "Lists ecoBridge projects available for credit retirement. An EVM wallet must be configured (ECOBRIDGE_EVM_MNEMONIC) to execute transactions.",
     {
+      project_id: z
+        .union([z.string(), z.number()])
+        .describe("Project ID (number) or partial name match (e.g., 'mongolia', 'kasigau')"),
       chain: z
         .string()
-        .describe(
-          "The blockchain to pay from (e.g., 'ethereum', 'polygon', 'arbitrum', 'base')"
-        ),
-      token: z
-        .string()
-        .describe("The token to pay with (e.g., 'USDC', 'USDT', 'ETH')"),
-      credit_class: z
-        .string()
-        .optional()
-        .describe("Credit class to retire (e.g., 'C01', 'BT01')"),
-      quantity: z
+        .default("base")
+        .describe("Chain to send payment from (default: 'base')"),
+      amount_usdc: z
         .number()
+        .describe("Amount of USDC to send (e.g., 0.1 for a test, 1.5 for 1 tCO2e of Inner Mongolia)"),
+      wait_for_retirement: z
+        .boolean()
         .optional()
-        .describe("Number of credits to retire (defaults to 1)"),
-      beneficiary_name: z
-        .string()
-        .optional()
-        .describe("Name for the retirement certificate"),
-      jurisdiction: z
-        .string()
-        .optional()
-        .describe("Retirement jurisdiction (ISO 3166-1)"),
-      reason: z
-        .string()
-        .optional()
-        .describe("Reason for retiring credits"),
+        .default(true)
+        .describe("If true, polls bridge.eco API until retirement is confirmed (up to 5 min). If false, returns immediately after tx is sent."),
     },
     {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
+      readOnlyHint: !isEvmWalletConfigured(),
+      destructiveHint: isEvmWalletConfigured(),
+      idempotentHint: false,
       openWorldHint: true,
     },
-    async ({
-      chain,
-      token,
-      credit_class,
-      quantity,
-      beneficiary_name,
-      jurisdiction,
-      reason,
-    }) => {
+    async ({ project_id, chain, amount_usdc, wait_for_retirement }) => {
       try {
-        const qty = quantity ?? 1;
-
-        // Validate chain/token via registry
-        const tokens = await getSupportedTokens(chain);
-        const matchedToken = tokens.find(
-          (t) => t.symbol.toLowerCase() === token.toLowerCase()
-        );
-
-        if (!matchedToken) {
-          // Provide helpful list of available tokens for this chain
-          const available = tokens.map((t) => t.symbol).join(", ");
-          const msg = available
-            ? `Token "${token}" is not supported on "${chain}". Available tokens: ${available}.\n\nUse \`browse_ecobridge_tokens\` to see all supported chains and tokens.`
-            : `Chain "${chain}" is not supported by ecoBridge, or no tokens are available.\n\nUse \`browse_ecobridge_tokens\` to see all supported chains and tokens.`;
-          return { content: [{ type: "text" as const, text: msg }] };
+        // 1. Look up the project
+        const project = await getProject(project_id);
+        if (!project) {
+          const allProjects = await getProjects();
+          const list = allProjects
+            .map((p) => `  ${p.id}: ${p.name} ($${p.price}/${p.unit || "unit"}) — ${p.location}`)
+            .join("\n");
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Project "${project_id}" not found.\n\nAvailable projects:\n${list}`,
+            }],
+          };
         }
 
-        // Get current token price for cost estimate
-        const priceUsd = await getTokenPrice(token, chain);
+        if (!project.evmWallet) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Project "${project.name}" does not have an EVM wallet configured. Cannot send payment.`,
+            }],
+          };
+        }
 
-        // Build deep-linked widget URL
-        const widgetUrl = buildRetirementUrl({
-          chain,
-          token,
-          amount: qty,
-          beneficiaryName: beneficiary_name,
-          retirementReason:
-            reason || "Regenerative contribution via Regen Compute Credits",
-          jurisdiction,
-        });
+        // 2. Check wallet is configured
+        if (!isEvmWalletConfigured()) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `EVM wallet not configured. Set ECOBRIDGE_EVM_MNEMONIC in .env to enable cross-chain retirement.\n\nProject: ${project.name}\nEVM Wallet: ${project.evmWallet}\nPrice: $${project.price}/${project.unit || "unit"}`,
+            }],
+          };
+        }
+
+        const fromAddress = getEvmAddress();
+        const estimatedCredits = project.price
+          ? (amount_usdc / project.price).toFixed(4)
+          : "unknown";
 
         const lines: string[] = [
-          `## Retire Ecocredits via ecoBridge`,
-          ``,
-          `Pay with **${token}** on **${matchedToken.chainName}** to retire ecocredits on Regen Network.`,
+          `## ecoBridge Retirement: ${project.name}`,
           ``,
           `| Field | Value |`,
           `|-------|-------|`,
-          `| Chain | ${matchedToken.chainName} |`,
-          `| Token | ${token} |`,
-          `| Quantity | ${qty} credit${qty !== 1 ? "s" : ""} |`,
+          `| Project | ${project.name} |`,
+          `| Location | ${project.location || "—"} |`,
+          `| Type | ${project.type || "—"} |`,
+          `| Price | $${project.price}/${project.unit || "unit"} |`,
+          `| Payment | ${amount_usdc} USDC on ${chain} |`,
+          `| Est. Credits | ~${estimatedCredits} ${project.unit || "units"} |`,
+          `| From | ${fromAddress} |`,
+          `| To | ${project.evmWallet} |`,
+          ``,
         ];
 
-        if (credit_class) lines.push(`| Credit Class | ${credit_class} |`);
-        if (beneficiary_name)
-          lines.push(`| Beneficiary | ${beneficiary_name} |`);
-        if (jurisdiction) lines.push(`| Jurisdiction | ${jurisdiction} |`);
-
-        if (priceUsd != null) {
-          lines.push(`| Token Price | $${priceUsd.toFixed(2)} USD |`);
-        }
-
+        // 3. Send USDC
+        lines.push(`### Sending USDC...`);
+        const result = await sendUsdc(chain, project.evmWallet, amount_usdc);
         lines.push(
           ``,
-          `### Payment Link`,
+          `**Transaction sent!**`,
+          `| Field | Value |`,
+          `|-------|-------|`,
+          `| Tx Hash | \`${result.txHash}\` |`,
+          `| Amount | ${result.amountUsdc} USDC |`,
+          `| Chain | ${result.chain} |`,
           ``,
-          `**[Open ecoBridge Widget](${widgetUrl})**`,
-          ``,
-          `**How it works:**`,
-          `1. Click the link above to open the ecoBridge payment widget`,
-          `2. Connect your wallet on ${matchedToken.chainName}`,
-          `3. The widget will pre-select ${token} and the credit retirement details`,
-          `4. Confirm the transaction — ecoBridge bridges your tokens and retires credits on Regen Network`,
-          `5. You'll receive a verifiable on-chain retirement certificate`,
-          ``,
-          `After retiring, use \`get_retirement_certificate\` to retrieve your verifiable certificate.`
         );
+
+        // 4. Optionally poll for retirement
+        if (wait_for_retirement) {
+          lines.push(`### Polling bridge.eco for retirement status...`);
+          try {
+            const tx = await pollTransaction(result.txHash, 60, 5000);
+            lines.push(
+              ``,
+              `**Retirement status: ${tx.status}**`,
+              ``,
+            );
+            if (tx.status === "RETIRED" || tx.status === "RWI_MINTED" || tx.status === "FEE_CALCULATED") {
+              lines.push(
+                `Credits successfully retired on Regen Network!`,
+                ``,
+                `Use \`get_retirement_certificate\` with the transaction hash to retrieve your verifiable certificate.`,
+              );
+            }
+            if (tx.retirementDetails) {
+              lines.push(``, `**Retirement details:** ${JSON.stringify(tx.retirementDetails, null, 2)}`);
+            }
+          } catch (pollErr) {
+            const pollMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
+            lines.push(
+              ``,
+              `Polling timed out: ${pollMsg}`,
+              ``,
+              `The transaction was sent successfully. bridge.eco may still be processing it.`,
+              `Check status manually: \`GET https://api.bridge.eco/transactions/${result.txHash}\``,
+            );
+          }
+        } else {
+          lines.push(
+            `Transaction sent. To check retirement status later:`,
+            `\`GET https://api.bridge.eco/transactions/${result.txHash}\``,
+          );
+        }
 
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -430,12 +457,10 @@ if (ecoBridgeEnabled) {
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Failed to generate ecoBridge retirement link: ${errMsg}\n\nUse \`browse_ecobridge_tokens\` to verify chain and token support.`,
-            },
-          ],
+          content: [{
+            type: "text" as const,
+            text: `ecoBridge retirement failed: ${errMsg}`,
+          }],
         };
       }
     }
@@ -558,7 +583,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `Regen Compute Credits MCP server running (wallet mode: ${walletMode ? "enabled" : "disabled"}, ecoBridge: ${ecoBridgeEnabled ? "enabled" : "disabled"})`
+    `Regen for AI MCP server running (wallet mode: ${walletMode ? "enabled" : "disabled"}, ecoBridge: ${ecoBridgeEnabled ? "enabled" : "disabled"})`
   );
 }
 

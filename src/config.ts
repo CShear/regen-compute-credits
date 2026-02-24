@@ -1,5 +1,5 @@
 /**
- * Centralized configuration for Regen Compute Credits.
+ * Centralized configuration for Regen for AI.
  *
  * Reads all environment variables once and exports a typed config object.
  * The key gate is `isWalletConfigured()` — when true, the server can
@@ -23,6 +23,10 @@ export interface Config {
   ecoBridgeApiUrl: string;
   ecoBridgeEnabled: boolean;
   ecoBridgeCacheTtlMs: number;
+
+  // ecoBridge EVM wallet (for sending tokens on Base/Ethereum/etc.)
+  ecoBridgeEvmMnemonic: string | undefined;
+  ecoBridgeEvmDerivationPath: string;
 }
 
 let _config: Config | undefined;
@@ -53,6 +57,10 @@ export function loadConfig(): Config {
       process.env.ECOBRIDGE_CACHE_TTL_MS || "60000",
       10
     ),
+
+    ecoBridgeEvmMnemonic: process.env.ECOBRIDGE_EVM_MNEMONIC || undefined,
+    ecoBridgeEvmDerivationPath:
+      process.env.ECOBRIDGE_EVM_DERIVATION_PATH || "m/44'/60'/0'/0/0",
   };
 
   return _config;

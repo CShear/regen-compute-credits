@@ -96,7 +96,7 @@ export async function retireCredits(
   const config = loadConfig();
   const retireJurisdiction = jurisdiction || config.defaultJurisdiction;
   const retireReason =
-    reason || "Regenerative contribution via Regen Compute Credits MCP server";
+    reason || "Regenerative contribution via Regen for AI";
   const retireQuantity = quantity || 1;
 
   try {
