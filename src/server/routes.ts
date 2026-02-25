@@ -235,9 +235,14 @@ export REGEN_BALANCE_URL=${baseUrl}</pre>
 
   /**
    * GET /checkout-page
-   * Simple landing page with top-up options.
+   * Landing page with Payment Link tiers.
+   * Payment Links are configured via STRIPE_PAYMENT_LINK_* env vars.
    */
   router.get("/checkout-page", (_req: Request, res: Response) => {
+    const seedlingUrl = process.env.STRIPE_PAYMENT_LINK_SEEDLING ?? "#";
+    const groveUrl = process.env.STRIPE_PAYMENT_LINK_GROVE ?? "#";
+    const forestUrl = process.env.STRIPE_PAYMENT_LINK_FOREST ?? "#";
+
     res.setHeader("Content-Type", "text/html");
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -248,17 +253,15 @@ export REGEN_BALANCE_URL=${baseUrl}</pre>
     body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
     h1 { color: #2d6a4f; }
     .tiers { display: flex; gap: 16px; margin: 24px 0; }
-    .tier { flex: 1; border: 2px solid #ddd; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
-    .tier:hover { border-color: #2d6a4f; }
-    .tier.selected { border-color: #2d6a4f; background: #f0f7f4; }
+    .tier { flex: 1; border: 2px solid #ddd; border-radius: 12px; padding: 20px; text-align: center; text-decoration: none; color: #1a1a1a; transition: border-color 0.2s, background 0.2s; display: block; }
+    .tier:hover { border-color: #2d6a4f; background: #f0f7f4; }
     .tier-name { font-weight: bold; font-size: 18px; color: #2d6a4f; }
     .tier-price { font-size: 28px; font-weight: bold; margin: 8px 0; }
     .tier-desc { font-size: 13px; color: #666; }
-    button { background: #2d6a4f; color: white; border: none; padding: 14px 28px; font-size: 16px; border-radius: 8px; cursor: pointer; margin-top: 16px; }
-    button:hover { background: #245a42; }
-    button:disabled { background: #999; cursor: not-allowed; }
     .info { background: #f0f7f4; border-left: 4px solid #2d6a4f; padding: 12px 16px; margin: 20px 0; }
-    #email { padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; width: 100%; box-sizing: border-box; margin: 8px 0 16px; }
+    .steps { margin: 24px 0; }
+    .steps li { margin-bottom: 8px; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -266,70 +269,34 @@ export REGEN_BALANCE_URL=${baseUrl}</pre>
   <p>Fund verified ecological regeneration from your AI sessions. Pay once, retire credits seamlessly from Claude Code.</p>
 
   <div class="info">
-    <strong>How it works:</strong> Add funds to your balance → get an API key → your AI assistant retires ecocredits on-chain without you ever leaving your coding session.
+    <strong>How it works:</strong> Pick a tier below, pay with your card, and you'll get an API key. Your AI assistant will use your prepaid balance to retire ecocredits on-chain — no need to leave your coding session.
   </div>
 
-  <label for="email"><strong>Your email</strong></label>
-  <input type="email" id="email" placeholder="you@example.com" required>
-
   <div class="tiers">
-    <div class="tier selected" data-amount="500" onclick="selectTier(this)">
+    <a class="tier" href="${seedlingUrl}">
       <div class="tier-name">Seedling</div>
       <div class="tier-price">$5</div>
       <div class="tier-desc">~1 carbon credit<br>~125 sessions</div>
-    </div>
-    <div class="tier" data-amount="1000" onclick="selectTier(this)">
+    </a>
+    <a class="tier" href="${groveUrl}">
       <div class="tier-name">Grove</div>
       <div class="tier-price">$10</div>
       <div class="tier-desc">~2.5 carbon credits<br>~250 sessions</div>
-    </div>
-    <div class="tier" data-amount="2500" onclick="selectTier(this)">
+    </a>
+    <a class="tier" href="${forestUrl}">
       <div class="tier-name">Forest</div>
       <div class="tier-price">$25</div>
       <div class="tier-desc">~6 carbon credits<br>~625 sessions</div>
-    </div>
+    </a>
   </div>
 
-  <button id="checkout-btn" onclick="checkout()">Fund ecological regeneration</button>
-
-  <script>
-    let selectedAmount = 500;
-
-    function selectTier(el) {
-      document.querySelectorAll('.tier').forEach(t => t.classList.remove('selected'));
-      el.classList.add('selected');
-      selectedAmount = parseInt(el.dataset.amount);
-    }
-
-    async function checkout() {
-      const email = document.getElementById('email').value;
-      if (!email) { alert('Please enter your email'); return; }
-
-      const btn = document.getElementById('checkout-btn');
-      btn.disabled = true;
-      btn.textContent = 'Redirecting...';
-
-      try {
-        const res = await fetch('/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount_cents: selectedAmount, email }),
-        });
-        const data = await res.json();
-        if (data.url) {
-          window.location.href = data.url;
-        } else {
-          alert('Error: ' + (data.error || 'Unknown error'));
-          btn.disabled = false;
-          btn.textContent = 'Fund ecological regeneration';
-        }
-      } catch (err) {
-        alert('Error: ' + err.message);
-        btn.disabled = false;
-        btn.textContent = 'Fund ecological regeneration';
-      }
-    }
-  </script>
+  <h2>After payment</h2>
+  <ol class="steps">
+    <li>You'll receive an API key on the confirmation page</li>
+    <li>Install the MCP: <code>claude mcp add -s user regen-for-ai -- npx regen-for-ai</code></li>
+    <li>Set your key: <code>export REGEN_API_KEY=your_key</code> and <code>export REGEN_BALANCE_URL=${baseUrl}</code></li>
+    <li>In Claude, say "retire 1 carbon credit" — it happens automatically from your balance</li>
+  </ol>
 </body>
 </html>`);
   });
