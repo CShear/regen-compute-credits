@@ -16,6 +16,57 @@ import { CryptoPaymentProvider } from "../services/payment/crypto.js";
 import { StripePaymentProvider } from "../services/payment/stripe-stub.js";
 import type { PaymentProvider } from "../services/payment/types.js";
 
+/** Check prepaid balance via the payment server API */
+async function checkPrepaidBalance(): Promise<{ available: boolean; balance_cents: number; topup_url?: string } | null> {
+  const config = loadConfig();
+  if (!config.balanceApiKey || !config.balanceUrl) return null;
+
+  try {
+    const res = await fetch(`${config.balanceUrl}/balance`, {
+      headers: { Authorization: `Bearer ${config.balanceApiKey}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { balance_cents: number; topup_url?: string };
+    return { available: data.balance_cents > 0, balance_cents: data.balance_cents, topup_url: data.topup_url };
+  } catch {
+    return null;
+  }
+}
+
+/** Debit prepaid balance after a successful on-chain retirement */
+async function debitPrepaidBalance(
+  amountCents: number,
+  description: string,
+  retirementTxHash?: string,
+  creditClass?: string,
+  creditsRetired?: number
+): Promise<{ success: boolean; balance_cents: number; topup_url?: string }> {
+  const config = loadConfig();
+  if (!config.balanceApiKey || !config.balanceUrl) {
+    return { success: false, balance_cents: 0 };
+  }
+
+  try {
+    const res = await fetch(`${config.balanceUrl}/debit`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.balanceApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount_cents: amountCents,
+        description,
+        retirement_tx_hash: retirementTxHash,
+        credit_class: creditClass,
+        credits_retired: creditsRetired,
+      }),
+    });
+    return await res.json() as { success: boolean; balance_cents: number; topup_url?: string };
+  } catch {
+    return { success: false, balance_cents: 0 };
+  }
+}
+
 function getMarketplaceLink(): string {
   const config = loadConfig();
   return `${config.marketplaceUrl}/projects/1?buying_options_filters=credit_card`;
@@ -89,11 +140,24 @@ export async function retireCredits(
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   // Path A: No wallet → marketplace link (fully backward compatible)
   if (!isWalletConfigured()) {
+    // Even without a wallet, if they have a prepaid balance, tell them about it
+    const balance = await checkPrepaidBalance();
+    if (balance && balance.available) {
+      return marketplaceFallback(
+        `You have a prepaid balance of $${(balance.balance_cents / 100).toFixed(2)}, ` +
+        `but no REGEN wallet is configured for on-chain retirement. ` +
+        `Set REGEN_WALLET_MNEMONIC in your .env to enable automatic retirement from your balance.`,
+        creditClass,
+        quantity,
+        beneficiaryName
+      );
+    }
     return marketplaceFallback("", creditClass, quantity, beneficiaryName);
   }
 
-  // Path B: Direct on-chain retirement
+  // Path B: Direct on-chain retirement (with optional prepaid balance)
   const config = loadConfig();
+  const usePrepaid = !!(config.balanceApiKey && config.balanceUrl);
   const retireJurisdiction = jurisdiction || config.defaultJurisdiction;
   const retireReason =
     reason || "Regenerative contribution via Regen for AI";
@@ -129,7 +193,30 @@ export async function retireCredits(
       );
     }
 
-    // 3. Authorize payment (balance check for crypto, hold for Stripe)
+    // 3. Check prepaid balance (if using prepaid mode)
+    const costCents = Number(selection.totalCostMicro / BigInt(10 ** (selection.exponent - 2)));
+    if (usePrepaid) {
+      const balance = await checkPrepaidBalance();
+      if (!balance || !balance.available || balance.balance_cents < costCents) {
+        const displayCost = formatAmount(
+          selection.totalCostMicro,
+          selection.exponent,
+          selection.displayDenom
+        );
+        const balanceStr = balance ? `$${(balance.balance_cents / 100).toFixed(2)}` : "$0.00";
+        const topupNote = balance?.topup_url
+          ? `\n\nTop up your balance: ${balance.topup_url}`
+          : "";
+        return marketplaceFallback(
+          `Insufficient prepaid balance. Need ${displayCost} but balance is ${balanceStr}.${topupNote}`,
+          creditClass,
+          quantity,
+          beneficiaryName
+        );
+      }
+    }
+
+    // 4. Authorize payment (balance check for crypto wallet)
     const provider = getPaymentProvider();
     const auth = await provider.authorizePayment(
       selection.totalCostMicro,
@@ -152,7 +239,7 @@ export async function retireCredits(
       );
     }
 
-    // 4. Build and broadcast MsgBuyDirect
+    // 5. Build and broadcast MsgBuyDirect
     const buyOrders = selection.orders.map((order) => ({
       sellOrderId: BigInt(order.sellOrderId),
       quantity: order.quantity,
@@ -207,10 +294,21 @@ export async function retireCredits(
       );
     }
 
-    // 5. Capture payment (no-op for crypto)
+    // 6. Capture payment (no-op for crypto)
     await provider.capturePayment(auth.id);
 
-    // 6. Poll indexer for retirement certificate
+    // 7. Debit prepaid balance (if using prepaid mode)
+    if (usePrepaid) {
+      await debitPrepaidBalance(
+        costCents,
+        `Retired ${selection.totalQuantity} credits (${creditClass || "mixed"})`,
+        txResult.transactionHash,
+        creditClass,
+        parseFloat(selection.totalQuantity)
+      );
+    }
+
+    // 8. Poll indexer for retirement certificate
     const retirement = await waitForRetirement(txResult.transactionHash);
 
     // 7. Build success response
@@ -253,6 +351,16 @@ export async function retireCredits(
         `> The indexer is still processing this retirement. `,
         `> Use \`get_retirement_certificate\` with tx hash \`${txResult.transactionHash}\` to check later.`
       );
+    }
+
+    // Show remaining prepaid balance if applicable
+    if (usePrepaid) {
+      const remaining = await checkPrepaidBalance();
+      if (remaining) {
+        lines.push(
+          `| Remaining Balance | $${(remaining.balance_cents / 100).toFixed(2)} |`
+        );
+      }
     }
 
     lines.push(

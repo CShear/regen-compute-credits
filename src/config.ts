@@ -27,6 +27,10 @@ export interface Config {
   // ecoBridge EVM wallet (for sending tokens on Base/Ethereum/etc.)
   ecoBridgeEvmMnemonic: string | undefined;
   ecoBridgeEvmDerivationPath: string;
+
+  // Prepaid balance (credit card top-up via Stripe)
+  balanceApiKey: string | undefined;
+  balanceUrl: string | undefined;
 }
 
 let _config: Config | undefined;
@@ -61,6 +65,9 @@ export function loadConfig(): Config {
     ecoBridgeEvmMnemonic: process.env.ECOBRIDGE_EVM_MNEMONIC || undefined,
     ecoBridgeEvmDerivationPath:
       process.env.ECOBRIDGE_EVM_DERIVATION_PATH || "m/44'/60'/0'/0/0",
+
+    balanceApiKey: process.env.REGEN_API_KEY || undefined,
+    balanceUrl: process.env.REGEN_BALANCE_URL || undefined,
   };
 
   return _config;

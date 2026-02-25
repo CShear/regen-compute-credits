@@ -33,6 +33,7 @@ if (args.includes("--help") || args.includes("-h")) {
 
 USAGE:
   npx regen-for-ai              Start the MCP server (stdio transport)
+  npx regen-for-ai serve        Start the payment & balance web server
   regen-for-ai --help           Show this help message
   regen-for-ai --version        Show version
 
@@ -48,12 +49,19 @@ MCP TOOLS:
   browse_ecobridge_tokens       List cross-chain payment tokens (when enabled)
   retire_via_ecobridge          Pay with any token via ecoBridge (when enabled)
 
+PAYMENT SERVER:
+  npx regen-for-ai serve [--port 3141]
+  Runs the Stripe Checkout + balance API server.
+  Requires STRIPE_SECRET_KEY in environment.
+
 CONFIGURATION:
   Copy .env.example to .env to customize. The server works without any
   configuration — read-only tools (footprint, browsing, impact) need no keys.
 
   Optional:
     REGEN_WALLET_MNEMONIC       Enable direct on-chain retirement
+    REGEN_API_KEY               Prepaid balance API key (from payment server)
+    REGEN_BALANCE_URL           Payment server URL (e.g. https://your-server.com)
     ECOBRIDGE_EVM_MNEMONIC      Enable cross-chain payment via ecoBridge
     ECOBRIDGE_ENABLED=false     Disable ecoBridge tools
 
@@ -75,6 +83,13 @@ if (args.includes("--version") || args.includes("-v")) {
   }
   process.exit(0);
 }
+
+// Handle "serve" subcommand — start the payment/balance web server
+if (args[0] === "serve") {
+  const portIdx = args.indexOf("--port");
+  const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : undefined;
+  import("./server/index.js").then(({ startServer }) => startServer({ port }));
+} else {
 
 // Load config early so isWalletConfigured() is available for annotations
 loadConfig();
@@ -637,8 +652,10 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `Regen for AI MCP server running (wallet mode: ${walletMode ? "enabled" : "disabled"}, ecoBridge: ${ecoBridgeEnabled ? "enabled" : "disabled"})`
+    `Regen for AI MCP server running (wallet mode: ${walletMode ? "enabled" : "disabled"}, ecoBridge: ${ecoBridgeEnabled ? "enabled" : "disabled"}, prepaid: ${config.balanceApiKey ? "enabled" : "disabled"})`
   );
 }
 
 main().catch(console.error);
+
+} // end else (serve subcommand)
