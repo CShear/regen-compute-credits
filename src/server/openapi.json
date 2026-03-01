@@ -1,0 +1,449 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Regen for AI — Developer API",
+    "description": "REST API for embedding ecological credit retirement, browsing, and footprint estimation into your applications. Powered by Regen Network.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Regen for AI",
+      "url": "https://github.com/CShear/regen-for-ai"
+    },
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3141/api/v1",
+      "description": "Local development"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/retire": {
+      "post": {
+        "operationId": "retireCredits",
+        "summary": "Retire ecocredits on Regen Network",
+        "description": "Execute an on-chain credit retirement. When a wallet is configured, credits are purchased and retired via MsgBuyDirect. Otherwise, returns a marketplace link for manual purchase.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Retirement result (success or marketplace fallback)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/RetireSuccess" },
+                    { "$ref": "#/components/schemas/RetireMarketplace" }
+                  ]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/credits": {
+      "get": {
+        "operationId": "browseCredits",
+        "summary": "Browse available ecocredits",
+        "description": "Returns live marketplace data including credit class listings, active sell orders, and recent marketplace orders.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filter by credit type: 'all', 'carbon', or 'biodiversity'",
+            "schema": {
+              "type": "string",
+              "enum": ["all", "carbon", "biodiversity"],
+              "default": "all"
+            }
+          },
+          {
+            "name": "max_results",
+            "in": "query",
+            "description": "Maximum number of items to return per category (max 50)",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available credits data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditsResponse"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/footprint": {
+      "get": {
+        "operationId": "estimateFootprint",
+        "summary": "Estimate AI session ecological footprint",
+        "description": "Provides a heuristic estimate of the ecological footprint of an AI session based on duration and tool call count.",
+        "parameters": [
+          {
+            "name": "session_minutes",
+            "in": "query",
+            "required": true,
+            "description": "Duration of the AI session in minutes",
+            "schema": {
+              "type": "number",
+              "minimum": 0.1
+            }
+          },
+          {
+            "name": "tool_calls",
+            "in": "query",
+            "description": "Number of tool calls made during the session",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Footprint estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FootprintResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/certificates/{id}": {
+      "get": {
+        "operationId": "getCertificate",
+        "summary": "Get retirement certificate",
+        "description": "Retrieve a retirement certificate by its node ID or transaction hash.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Retirement node ID (e.g. WyJy...) or transaction hash",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retirement certificate details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateResponse"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/impact": {
+      "get": {
+        "operationId": "getImpact",
+        "summary": "Get Regen Network impact summary",
+        "description": "Returns aggregate statistics about the Regen Network including credit classes, projects, retirements, and marketplace orders.",
+        "responses": {
+          "200": {
+            "description": "Impact summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpactResponse"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API key obtained from Stripe checkout. Format: rfa_..."
+      }
+    },
+    "schemas": {
+      "RetireRequest": {
+        "type": "object",
+        "properties": {
+          "credit_class": {
+            "type": "string",
+            "description": "Credit class abbreviation (C, BT, MBS, KSH, USS)",
+            "example": "C"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Number of credits to retire",
+            "default": 1,
+            "minimum": 0.000001
+          },
+          "beneficiary_name": {
+            "type": "string",
+            "description": "Name to appear on the retirement certificate"
+          },
+          "jurisdiction": {
+            "type": "string",
+            "description": "ISO jurisdiction code (e.g. US, BR, KE)",
+            "example": "US"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for retirement"
+          }
+        }
+      },
+      "RetireSuccess": {
+        "type": "object",
+        "required": ["status", "tx_hash", "credits_retired"],
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "tx_hash": { "type": "string" },
+          "credits_retired": { "type": "string" },
+          "cost": { "type": "string" },
+          "block_height": { "type": "integer" },
+          "certificate_id": { "type": "string", "nullable": true },
+          "certificate_url": { "type": "string", "format": "uri", "nullable": true },
+          "jurisdiction": { "type": "string" },
+          "reason": { "type": "string" },
+          "beneficiary_name": { "type": "string", "nullable": true },
+          "remaining_balance_cents": { "type": "integer", "nullable": true }
+        }
+      },
+      "RetireMarketplace": {
+        "type": "object",
+        "required": ["status", "marketplace_url"],
+        "properties": {
+          "status": { "type": "string", "enum": ["marketplace_link"] },
+          "marketplace_url": { "type": "string", "format": "uri" },
+          "message": { "type": "string" }
+        }
+      },
+      "CreditsResponse": {
+        "type": "object",
+        "properties": {
+          "marketplace_snapshot": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "credit_type": { "type": "string" },
+                "credit_type_abbreviation": { "type": "string" },
+                "available_credits": { "type": "number" },
+                "sell_orders": { "type": "integer" }
+              }
+            }
+          },
+          "credit_classes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "type": { "type": "string" },
+                "type_abbreviation": { "type": "string" },
+                "projects": { "type": "integer" },
+                "jurisdictions": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "sell_orders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "batch_denom": { "type": "string" },
+                "quantity": { "type": "string" },
+                "ask_amount": { "type": "string" },
+                "ask_denom": { "type": "string" }
+              }
+            }
+          },
+          "recent_orders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "project_id": { "type": "string" },
+                "credits_amount": { "type": "string" },
+                "total_price": { "type": "string" },
+                "ask_denom": { "type": "string" },
+                "retired": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "FootprintResponse": {
+        "type": "object",
+        "required": ["session_minutes", "estimated_queries", "energy_kwh", "co2_kg"],
+        "properties": {
+          "session_minutes": { "type": "number" },
+          "estimated_queries": { "type": "integer" },
+          "energy_kwh": { "type": "number" },
+          "co2_kg": { "type": "number" },
+          "co2_tonnes": { "type": "number" },
+          "equivalent_carbon_credits": { "type": "number" },
+          "equivalent_cost_usd": { "type": "number" },
+          "methodology_note": { "type": "string" }
+        }
+      },
+      "CertificateResponse": {
+        "type": "object",
+        "required": ["node_id", "amount", "batch_denom", "owner", "tx_hash"],
+        "properties": {
+          "node_id": { "type": "string" },
+          "amount": { "type": "string" },
+          "batch_denom": { "type": "string" },
+          "owner": { "type": "string" },
+          "jurisdiction": { "type": "string" },
+          "reason": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time", "nullable": true },
+          "block_height": { "type": "string" },
+          "tx_hash": { "type": "string" },
+          "certificate_url": { "type": "string", "format": "uri" }
+        }
+      },
+      "ImpactResponse": {
+        "type": "object",
+        "properties": {
+          "credit_classes": { "type": "integer" },
+          "active_projects": { "type": "integer" },
+          "jurisdictions": { "type": "integer" },
+          "total_retirements": { "type": "integer", "nullable": true },
+          "total_marketplace_orders": { "type": "integer", "nullable": true },
+          "credit_types": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "abbreviation": { "type": "string" },
+                "name": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "details": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request parameters",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid API key",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Rate limit exceeded",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds to wait before retrying",
+            "schema": { "type": "integer" }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal server error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Upstream service unavailable (Regen Ledger or Indexer)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" }
+          }
+        }
+      }
+    }
+  }
+}

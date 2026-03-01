@@ -6,11 +6,13 @@
  * - Stripe Checkout for prepaid balance top-ups
  * - Stripe webhooks for payment confirmation
  * - Balance checking and debiting for MCP clients
+ * - Developer REST API (/api/v1/) for programmatic access
  *
  * Run: npx regen-for-ai serve [--port 3141]
  *
  * Certificate routes work without Stripe configuration.
  * Payment routes require STRIPE_SECRET_KEY.
+ * API routes require STRIPE_SECRET_KEY (for the DB / API key system).
  */
 
 import express from "express";
@@ -18,6 +20,7 @@ import Stripe from "stripe";
 import { getDb } from "./db.js";
 import { createRoutes } from "./routes.js";
 import { createCertificateRoutes } from "./certificate.js";
+import { createApiRoutes } from "./api-routes.js";
 import { loadConfig } from "../config.js";
 
 export function startServer(options: { port?: number; dbPath?: string } = {}) {
@@ -53,6 +56,10 @@ export function startServer(options: { port?: number; dbPath?: string } = {}) {
     const config = loadConfig();
     const routes = createRoutes(stripe, db, baseUrl, config);
     app.use(routes);
+
+    // Mount developer API routes
+    const apiRoutes = createApiRoutes(db, baseUrl, config);
+    app.use(apiRoutes);
   }
 
   app.listen(port, () => {
@@ -61,6 +68,8 @@ export function startServer(options: { port?: number; dbPath?: string } = {}) {
     if (stripeKey) {
       console.log(`  Checkout page: ${baseUrl}/checkout-page`);
       console.log(`  Landing page: ${baseUrl}/`);
+      console.log(`  Developer API: ${baseUrl}/api/v1/`);
+      console.log(`  OpenAPI spec: ${baseUrl}/api/v1/openapi.json`);
       console.log(`  Stripe mode: ${stripeKey.startsWith("sk_test_") ? "TEST" : "LIVE"}`);
       console.log(`  Database: ${dbPath}`);
     } else {

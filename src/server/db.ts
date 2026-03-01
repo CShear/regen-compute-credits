@@ -124,6 +124,19 @@ export function getDb(dbPath = "data/regen-for-ai.db"): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_burns_pool_run ON burns(pool_run_id);
     CREATE INDEX IF NOT EXISTS idx_burns_status ON burns(status);
+
+    CREATE TABLE IF NOT EXISTS api_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      endpoint TEXT NOT NULL,
+      method TEXT NOT NULL,
+      status_code INTEGER NOT NULL,
+      response_time_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_api_usage_user_id ON api_usage(user_id);
+    CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON api_usage(created_at);
   `);
 
   return _db;
@@ -518,4 +531,19 @@ export function getCumulativeAttribution(db: Database.Database, subscriberId: nu
     total_contribution_cents: 0,
     months_active: 0,
   };
+}
+
+// --- API usage tracking ---
+
+export function recordApiUsage(
+  db: Database.Database,
+  userId: number,
+  endpoint: string,
+  method: string,
+  statusCode: number,
+  responseTimeMs?: number
+): void {
+  db.prepare(
+    "INSERT INTO api_usage (user_id, endpoint, method, status_code, response_time_ms) VALUES (?, ?, ?, ?, ?)"
+  ).run(userId, endpoint, method, statusCode, responseTimeMs ?? null);
 }

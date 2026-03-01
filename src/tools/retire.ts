@@ -6,79 +6,78 @@
  *   Path B (wallet configured): Execute on-chain MsgBuyDirect with auto-retire
  *
  * Every error in Path B returns a fallback marketplace link so the user is never stuck.
+ *
+ * Core orchestration lives in services/retirement.ts. This file wraps the
+ * structured result into MCP-style markdown content.
  */
 
-import { loadConfig, isWalletConfigured } from "../config.js";
-import { initWallet, signAndBroadcast } from "../services/wallet.js";
-import { selectBestOrders } from "../services/order-selector.js";
-import { waitForRetirement } from "../services/indexer.js";
-import { CryptoPaymentProvider } from "../services/payment/crypto.js";
-import { StripePaymentProvider } from "../services/payment/stripe-stub.js";
-import type { PaymentProvider } from "../services/payment/types.js";
+import { loadConfig } from "../config.js";
+import { executeRetirement, type RetirementResult } from "../services/retirement.js";
 
-/** Check prepaid balance via the payment server API */
-async function checkPrepaidBalance(): Promise<{ available: boolean; balance_cents: number; topup_url?: string } | null> {
-  const config = loadConfig();
-  if (!config.balanceApiKey || !config.balanceUrl) return null;
-
-  try {
-    const res = await fetch(`${config.balanceUrl}/balance`, {
-      headers: { Authorization: `Bearer ${config.balanceApiKey}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { balance_cents: number; topup_url?: string };
-    return { available: data.balance_cents > 0, balance_cents: data.balance_cents, topup_url: data.topup_url };
-  } catch {
-    return null;
-  }
-}
-
-/** Debit prepaid balance after a successful on-chain retirement */
-async function debitPrepaidBalance(
-  amountCents: number,
-  description: string,
-  retirementTxHash?: string,
-  creditClass?: string,
-  creditsRetired?: number
-): Promise<{ success: boolean; balance_cents: number; topup_url?: string }> {
-  const config = loadConfig();
-  if (!config.balanceApiKey || !config.balanceUrl) {
-    return { success: false, balance_cents: 0 };
+function resultToMarkdown(result: RetirementResult): { content: Array<{ type: "text"; text: string }> } {
+  if (result.status === "marketplace_fallback") {
+    return marketplaceFallback(
+      result.message || "",
+      result.beneficiaryName
+    );
   }
 
-  try {
-    const res = await fetch(`${config.balanceUrl}/debit`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.balanceApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount_cents: amountCents,
-        description,
-        retirement_tx_hash: retirementTxHash,
-        credit_class: creditClass,
-        credits_retired: creditsRetired,
-      }),
-    });
-    return await res.json() as { success: boolean; balance_cents: number; topup_url?: string };
-  } catch {
-    return { success: false, balance_cents: 0 };
-  }
-}
+  // Success path
+  const lines: string[] = [
+    `## Ecocredit Retirement Successful`,
+    ``,
+    `Credits have been permanently retired on Regen Ledger.`,
+    ``,
+    `| Field | Value |`,
+    `|-------|-------|`,
+    `| Credits Retired | ${result.creditsRetired} |`,
+    `| Cost | ${result.cost} |`,
+    `| Jurisdiction | ${result.jurisdiction} |`,
+    `| Reason | ${result.reason} |`,
+    `| Transaction Hash | \`${result.txHash}\` |`,
+    `| Block Height | ${result.blockHeight} |`,
+  ];
 
-function getMarketplaceLink(): string {
-  const config = loadConfig();
-  return `${config.marketplaceUrl}/projects/1?buying_options_filters=credit_card`;
+  if (result.beneficiaryName) {
+    lines.push(`| Beneficiary | ${result.beneficiaryName} |`);
+  }
+
+  if (result.certificateId) {
+    lines.push(`| Certificate ID | ${result.certificateId} |`);
+    lines.push(
+      ``,
+      `### Retirement Certificate`,
+      ``,
+      `Use \`get_retirement_certificate\` with ID \`${result.certificateId}\` to retrieve the full certificate.`
+    );
+  } else {
+    lines.push(
+      ``,
+      `> The indexer is still processing this retirement. `,
+      `> Use \`get_retirement_certificate\` with tx hash \`${result.txHash}\` to check later.`
+    );
+  }
+
+  if (result.remainingBalanceCents !== undefined) {
+    lines.push(
+      `| Remaining Balance | $${(result.remainingBalanceCents / 100).toFixed(2)} |`
+    );
+  }
+
+  lines.push(
+    ``,
+    `This retirement is permanently recorded on Regen Ledger and cannot be altered or reversed.`
+  );
+
+  return { content: [{ type: "text" as const, text: lines.join("\n") }] };
 }
 
 function marketplaceFallback(
   message: string,
-  creditClass?: string,
-  quantity?: number,
   beneficiaryName?: string
 ): { content: Array<{ type: "text"; text: string }> } {
-  const url = getMarketplaceLink();
+  const config = loadConfig();
+  const url = `${config.marketplaceUrl}/projects/1?buying_options_filters=credit_card`;
   const lines: string[] = [
     `## Retire Ecocredits on Regen Network`,
     ``,
@@ -88,8 +87,6 @@ function marketplaceFallback(
     lines.push(`> ${message}`, ``);
   }
 
-  if (creditClass) lines.push(`**Credit class**: ${creditClass}`);
-  if (quantity) lines.push(`**Quantity**: ${quantity} credits`);
   if (beneficiaryName) lines.push(`**Beneficiary**: ${beneficiaryName}`);
 
   lines.push(
@@ -108,7 +105,7 @@ function marketplaceFallback(
     `5. Credits are permanently retired — verifiable, immutable, non-reversible`,
     ``,
     `Use \`browse_available_credits\` to see current pricing and availability.`,
-    ...(loadConfig().ecoBridgeEnabled
+    ...(config.ecoBridgeEnabled
       ? [
           ``,
           `**Cross-chain option:** Use \`retire_via_ecobridge\` to pay with tokens from other chains`,
@@ -123,14 +120,6 @@ function marketplaceFallback(
   return { content: [{ type: "text" as const, text: lines.join("\n") }] };
 }
 
-function getPaymentProvider(): PaymentProvider {
-  const config = loadConfig();
-  if (config.paymentProvider === "stripe") {
-    return new StripePaymentProvider();
-  }
-  return new CryptoPaymentProvider();
-}
-
 export async function retireCredits(
   creditClass?: string,
   quantity?: number,
@@ -138,259 +127,12 @@ export async function retireCredits(
   jurisdiction?: string,
   reason?: string
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  // Path A: No wallet → marketplace link (fully backward compatible)
-  if (!isWalletConfigured()) {
-    // Even without a wallet, if they have a prepaid balance, tell them about it
-    const balance = await checkPrepaidBalance();
-    if (balance && balance.available) {
-      return marketplaceFallback(
-        `You have a prepaid balance of $${(balance.balance_cents / 100).toFixed(2)}, ` +
-        `but no REGEN wallet is configured for on-chain retirement. ` +
-        `Set REGEN_WALLET_MNEMONIC in your .env to enable automatic retirement from your balance.`,
-        creditClass,
-        quantity,
-        beneficiaryName
-      );
-    }
-    return marketplaceFallback("", creditClass, quantity, beneficiaryName);
-  }
-
-  // Path B: Direct on-chain retirement (with optional prepaid balance)
-  const config = loadConfig();
-  const usePrepaid = !!(config.balanceApiKey && config.balanceUrl);
-  const retireJurisdiction = jurisdiction || config.defaultJurisdiction;
-  const retireReason =
-    reason || "Regenerative contribution via Regen for AI";
-  const retireQuantity = quantity || 1;
-
-  try {
-    // 1. Initialize wallet
-    const { address } = await initWallet();
-
-    // 2. Find best-priced sell orders
-    const selection = await selectBestOrders(
-      creditClass ? (creditClass.startsWith("C") ? "carbon" : "biodiversity") : undefined,
-      retireQuantity
-    );
-
-    if (selection.orders.length === 0) {
-      return marketplaceFallback(
-        "No matching sell orders found on-chain. Try the marketplace instead.",
-        creditClass,
-        quantity,
-        beneficiaryName
-      );
-    }
-
-    if (selection.insufficientSupply) {
-      const available = parseFloat(selection.totalQuantity);
-      return marketplaceFallback(
-        `Only ${available.toFixed(4)} credits available on-chain (requested ${retireQuantity}). ` +
-          `You can try a smaller quantity or use the marketplace.`,
-        creditClass,
-        quantity,
-        beneficiaryName
-      );
-    }
-
-    // 3. Check prepaid balance (if using prepaid mode)
-    const costCents = Number(selection.totalCostMicro / BigInt(10 ** (selection.exponent - 2)));
-    if (usePrepaid) {
-      const balance = await checkPrepaidBalance();
-      if (!balance || !balance.available || balance.balance_cents < costCents) {
-        const displayCost = formatAmount(
-          selection.totalCostMicro,
-          selection.exponent,
-          selection.displayDenom
-        );
-        const balanceStr = balance ? `$${(balance.balance_cents / 100).toFixed(2)}` : "$0.00";
-        const topupNote = balance?.topup_url
-          ? `\n\nTop up your balance: ${balance.topup_url}`
-          : "";
-        return marketplaceFallback(
-          `Insufficient prepaid balance. Need ${displayCost} but balance is ${balanceStr}.${topupNote}`,
-          creditClass,
-          quantity,
-          beneficiaryName
-        );
-      }
-    }
-
-    // 4. Authorize payment (balance check for crypto wallet)
-    const provider = getPaymentProvider();
-    const auth = await provider.authorizePayment(
-      selection.totalCostMicro,
-      selection.paymentDenom,
-      { buyer: address, creditClass: creditClass || "any" }
-    );
-
-    if (auth.status === "failed") {
-      const displayCost = formatAmount(
-        selection.totalCostMicro,
-        selection.exponent,
-        selection.displayDenom
-      );
-      return marketplaceFallback(
-        auth.message ||
-          `Insufficient wallet balance. Need ${displayCost} to purchase ${retireQuantity} credits.`,
-        creditClass,
-        quantity,
-        beneficiaryName
-      );
-    }
-
-    // 5. Build and broadcast MsgBuyDirect
-    const buyOrders = selection.orders.map((order) => ({
-      sellOrderId: BigInt(order.sellOrderId),
-      quantity: order.quantity,
-      bidPrice: {
-        denom: order.askDenom,
-        amount: order.askAmount,
-      },
-      disableAutoRetire: false,
-      retirementJurisdiction: retireJurisdiction,
-      retirementReason: retireReason,
-    }));
-
-    const msg = {
-      typeUrl: "/regen.ecocredit.marketplace.v1.MsgBuyDirect",
-      value: {
-        buyer: address,
-        orders: buyOrders,
-      },
-    };
-
-    let txResult;
-    try {
-      txResult = await signAndBroadcast([msg]);
-    } catch (err) {
-      // Release payment hold on broadcast failure
-      try {
-        await provider.refundPayment(auth.id);
-      } catch {
-        // Ignore refund errors
-      }
-      const errMsg = err instanceof Error ? err.message : String(err);
-      return marketplaceFallback(
-        `Transaction broadcast failed: ${errMsg}`,
-        creditClass,
-        quantity,
-        beneficiaryName
-      );
-    }
-
-    // Check tx result
-    if (txResult.code !== 0) {
-      try {
-        await provider.refundPayment(auth.id);
-      } catch {
-        // Ignore refund errors
-      }
-      return marketplaceFallback(
-        `Transaction rejected (code ${txResult.code}): ${txResult.rawLog || "unknown error"}`,
-        creditClass,
-        quantity,
-        beneficiaryName
-      );
-    }
-
-    // 6. Capture payment (no-op for crypto)
-    await provider.capturePayment(auth.id);
-
-    // 7. Debit prepaid balance (if using prepaid mode)
-    if (usePrepaid) {
-      await debitPrepaidBalance(
-        costCents,
-        `Retired ${selection.totalQuantity} credits (${creditClass || "mixed"})`,
-        txResult.transactionHash,
-        creditClass,
-        parseFloat(selection.totalQuantity)
-      );
-    }
-
-    // 8. Poll indexer for retirement certificate
-    const retirement = await waitForRetirement(txResult.transactionHash);
-
-    // 7. Build success response
-    const displayCost = formatAmount(
-      selection.totalCostMicro,
-      selection.exponent,
-      selection.displayDenom
-    );
-
-    const lines: string[] = [
-      `## Ecocredit Retirement Successful`,
-      ``,
-      `Credits have been permanently retired on Regen Ledger.`,
-      ``,
-      `| Field | Value |`,
-      `|-------|-------|`,
-      `| Credits Retired | ${selection.totalQuantity} |`,
-      `| Cost | ${displayCost} |`,
-      `| Jurisdiction | ${retireJurisdiction} |`,
-      `| Reason | ${retireReason} |`,
-      `| Transaction Hash | \`${txResult.transactionHash}\` |`,
-      `| Block Height | ${txResult.height} |`,
-    ];
-
-    if (beneficiaryName) {
-      lines.push(`| Beneficiary | ${beneficiaryName} |`);
-    }
-
-    if (retirement) {
-      lines.push(`| Certificate ID | ${retirement.nodeId} |`);
-      lines.push(
-        ``,
-        `### Retirement Certificate`,
-        ``,
-        `Use \`get_retirement_certificate\` with ID \`${retirement.nodeId}\` to retrieve the full certificate.`
-      );
-    } else {
-      lines.push(
-        ``,
-        `> The indexer is still processing this retirement. `,
-        `> Use \`get_retirement_certificate\` with tx hash \`${txResult.transactionHash}\` to check later.`
-      );
-    }
-
-    // Show remaining prepaid balance if applicable
-    if (usePrepaid) {
-      const remaining = await checkPrepaidBalance();
-      if (remaining) {
-        lines.push(
-          `| Remaining Balance | $${(remaining.balance_cents / 100).toFixed(2)} |`
-        );
-      }
-    }
-
-    lines.push(
-      ``,
-      `This retirement is permanently recorded on Regen Ledger and cannot be altered or reversed.`
-    );
-
-    return { content: [{ type: "text" as const, text: lines.join("\n") }] };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    return marketplaceFallback(
-      `Direct retirement failed: ${errMsg}`,
-      creditClass,
-      quantity,
-      beneficiaryName
-    );
-  }
-}
-
-function formatAmount(
-  amountMicro: bigint,
-  exponent: number,
-  displayDenom: string
-): string {
-  const divisor = 10 ** exponent;
-  const whole = amountMicro / BigInt(divisor);
-  const frac = amountMicro % BigInt(divisor);
-  const fracStr = frac.toString().padStart(exponent, "0").replace(/0+$/, "");
-  if (fracStr) {
-    return `${whole}.${fracStr} ${displayDenom}`;
-  }
-  return `${whole} ${displayDenom}`;
+  const result = await executeRetirement({
+    creditClass,
+    quantity,
+    beneficiaryName,
+    jurisdiction,
+    reason,
+  });
+  return resultToMarkdown(result);
 }
