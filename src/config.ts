@@ -6,6 +6,8 @@
  * execute on-chain retirements directly instead of returning marketplace links.
  */
 
+import { randomBytes } from "crypto";
+
 export interface Config {
   // Existing (Phase 1)
   indexerUrl: string;
@@ -51,6 +53,10 @@ export interface Config {
 
   // Developer API
   apiRateLimit: number;
+
+  // Dashboard magic link auth
+  magicLinkTtlMinutes: number;
+  sessionSecret: string;
 }
 
 let _config: Config | undefined;
@@ -105,6 +111,9 @@ export function loadConfig(): Config {
       "https://api.coingecko.com/api/v3/simple/price?ids=regen&vs_currencies=usd",
 
     apiRateLimit: parseInt(process.env.REGEN_API_RATE_LIMIT || "100", 10),
+
+    magicLinkTtlMinutes: parseInt(process.env.MAGIC_LINK_TTL_MINUTES || "15", 10),
+    sessionSecret: process.env.SESSION_SECRET || randomBytes(32).toString("hex"),
   };
 
   return _config;

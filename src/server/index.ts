@@ -21,6 +21,7 @@ import { getDb } from "./db.js";
 import { createRoutes } from "./routes.js";
 import { createCertificateRoutes } from "./certificate.js";
 import { createApiRoutes } from "./api-routes.js";
+import { createDashboardRoutes } from "./dashboard.js";
 import { loadConfig } from "../config.js";
 
 export function startServer(options: { port?: number; dbPath?: string } = {}) {
@@ -60,6 +61,12 @@ export function startServer(options: { port?: number; dbPath?: string } = {}) {
     // Mount developer API routes
     const apiRoutes = createApiRoutes(db, baseUrl, config);
     app.use(apiRoutes);
+
+    // Mount subscriber dashboard routes
+    // JSON + URL-encoded body parsing is already set up above
+    app.use(express.urlencoded({ extended: false }));
+    const dashboardRoutes = createDashboardRoutes(db, baseUrl, config);
+    app.use(dashboardRoutes);
   }
 
   app.listen(port, () => {
@@ -70,6 +77,7 @@ export function startServer(options: { port?: number; dbPath?: string } = {}) {
       console.log(`  Landing page: ${baseUrl}/`);
       console.log(`  Developer API: ${baseUrl}/api/v1/`);
       console.log(`  OpenAPI spec: ${baseUrl}/api/v1/openapi.json`);
+      console.log(`  Dashboard: ${baseUrl}/dashboard`);
       console.log(`  Stripe mode: ${stripeKey.startsWith("sk_test_") ? "TEST" : "LIVE"}`);
       console.log(`  Database: ${dbPath}`);
     } else {

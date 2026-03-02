@@ -137,6 +137,17 @@ export function getDb(dbPath = "data/regen-for-ai.db"): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_api_usage_user_id ON api_usage(user_id);
     CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON api_usage(created_at);
+
+    CREATE TABLE IF NOT EXISTS magic_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_magic_links_token ON magic_links(token);
   `);
 
   return _db;
@@ -546,4 +557,64 @@ export function recordApiUsage(
   db.prepare(
     "INSERT INTO api_usage (user_id, endpoint, method, status_code, response_time_ms) VALUES (?, ?, ?, ?, ?)"
   ).run(userId, endpoint, method, statusCode, responseTimeMs ?? null);
+}
+
+// --- Dashboard helpers ---
+
+export function getSubscriberByUserId(db: Database.Database, userId: number): Subscriber | undefined {
+  return db.prepare(
+    "SELECT * FROM subscribers WHERE user_id = ? ORDER BY created_at DESC LIMIT 1"
+  ).get(userId) as Subscriber | undefined;
+}
+
+export interface MonthlyAttribution {
+  run_date: string;
+  carbon_credits: number;
+  biodiversity_credits: number;
+  uss_credits: number;
+  contribution_cents: number;
+  carbon_tx_hash: string | null;
+  biodiversity_tx_hash: string | null;
+  uss_tx_hash: string | null;
+}
+
+export function getMonthlyAttributions(db: Database.Database, subscriberId: number): MonthlyAttribution[] {
+  return db.prepare(`
+    SELECT
+      pr.run_date,
+      a.carbon_credits,
+      a.biodiversity_credits,
+      a.uss_credits,
+      a.contribution_cents,
+      pr.carbon_tx_hash,
+      pr.biodiversity_tx_hash,
+      pr.uss_tx_hash
+    FROM attributions a
+    JOIN pool_runs pr ON a.pool_run_id = pr.id
+    WHERE a.subscriber_id = ?
+    ORDER BY pr.run_date ASC
+  `).all(subscriberId) as MonthlyAttribution[];
+}
+
+// --- Magic link helpers ---
+
+export function createMagicLinkToken(db: Database.Database, email: string, ttlMinutes: number): string {
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+  db.prepare(
+    "INSERT INTO magic_links (token, email, expires_at) VALUES (?, ?, ?)"
+  ).run(token, email, expiresAt);
+  return token;
+}
+
+export function verifyMagicLinkToken(db: Database.Database, token: string): string | null {
+  const row = db.prepare(
+    "SELECT * FROM magic_links WHERE token = ? AND used = 0"
+  ).get(token) as { email: string; expires_at: string } | undefined;
+
+  if (!row) return null;
+  if (new Date(row.expires_at) < new Date()) return null;
+
+  db.prepare("UPDATE magic_links SET used = 1 WHERE token = ?").run(token);
+  return row.email;
 }

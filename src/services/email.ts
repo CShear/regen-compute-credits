@@ -457,5 +457,65 @@ export async function sendMonthlyEmails(
   return { sent, failed, errors };
 }
 
+/**
+ * Send a magic link email for dashboard login.
+ */
+export async function sendMagicLinkEmail(
+  email: string,
+  verifyUrl: string,
+  ttlMinutes: number,
+): Promise<void> {
+  const config = loadConfig();
+
+  if (!config.postmarkServerToken) {
+    throw new Error("POSTMARK_SERVER_TOKEN not configured");
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f4f4;">
+    <tr>
+      <td align="center" style="padding: 40px 16px;">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0" style="max-width: 480px; width: 100%; background: #fff; border-radius: 12px; border: 1px solid #e5e7eb;">
+          <tr>
+            <td style="padding: 32px; text-align: center;">
+              <p style="margin: 0 0 8px; font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #2d6a4f;">REGEN FOR AI</p>
+              <h1 style="margin: 0 0 20px; font-size: 22px; color: #1a1a1a;">Log in to Your Dashboard</h1>
+              <p style="margin: 0 0 24px; font-size: 15px; color: #555; line-height: 1.6;">Click the button below to access your ecological impact dashboard. This link expires in ${ttlMinutes} minutes.</p>
+              <a href="${escapeHtml(verifyUrl)}" style="display: inline-block; padding: 14px 36px; background-color: #2d6a4f; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 8px;">Log In</a>
+              <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af; line-height: 1.5;">If you did not request this link, you can safely ignore this email.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const response = await fetch(POSTMARK_API_URL, {
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "X-Postmark-Server-Token": config.postmarkServerToken,
+    },
+    body: JSON.stringify({
+      From: config.emailFromAddress,
+      To: email,
+      Subject: "Log in to your Regen for AI Dashboard",
+      HtmlBody: html,
+      MessageStream: "outbound",
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Postmark API error (${response.status}): ${body}`);
+  }
+}
+
 // Export for testing
 export { renderEmailHtml, type EmailData };
