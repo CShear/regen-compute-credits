@@ -1,4 +1,4 @@
-# Community Seeding Drafts — Regen for AI
+# Community Seeding Drafts — Regenerative Compute
 
 > Ready to copy-paste. Replace `[BLOG_URL]` and `[DEMO_URL]` with actual links before posting.
 
@@ -9,10 +9,10 @@
 ### Post Title
 
 ```
-Show HN: Regen for AI – On-chain ecological credit retirement from your AI assistant
+Show HN: Regenerative Compute – On-chain ecological credit retirement from your AI assistant
 ```
 
-**Link**: https://github.com/CShear/regen-for-ai
+**Link**: https://github.com/CShear/regen-compute
 
 ### Top-Level Comment
 
@@ -24,7 +24,7 @@ This tool takes a different approach. Every retirement happens on the Regen Ledg
 
 Install with one command:
 
-    claude mcp add -s user regen-for-ai -- npx regen-for-ai
+    claude mcp add -s user regen-compute -- npx regen-compute
 
 No API keys. No wallet required. No configuration.
 
@@ -36,8 +36,8 @@ Credits available include carbon, biodiversity (Terrasos, Colombia), marine biod
 
 Open source, Apache-2.0. TypeScript, Node.js 20+, @modelcontextprotocol/sdk.
 
-GitHub: https://github.com/CShear/regen-for-ai
-npm: https://www.npmjs.com/package/regen-for-ai
+GitHub: https://github.com/CShear/regen-compute
+npm: https://www.npmjs.com/package/regen-compute
 
 Happy to answer questions about the architecture, the on-chain retirement flow, or the credit market mechanics.
 
@@ -48,7 +48,7 @@ Happy to answer questions about the architecture, the on-chain retirement flow, 
 ### Post Title
 
 ```
-[P] Regen for AI — An MCP tool for verified ecological accountability in AI workflows
+[P] Regenerative Compute — An MCP tool for verified ecological accountability in AI workflows
 ```
 
 ### Body
@@ -57,7 +57,7 @@ The IEA projects data centers will consume over 1,000 TWh annually by 2026 — r
 
 The problem is that developers who care about this have no actionable tool inside their workflow. Corporate sustainability dashboards are unverifiable. Traditional offset registries (Gold Standard, Verra) operate on private databases where retirement claims can't be independently audited.
 
-I built **Regen for AI**, an MCP (Model Context Protocol) server that connects AI coding assistants to the Regen Network — a public blockchain purpose-built for ecological credit issuance and retirement. Every retirement is an on-chain transaction: immutable, auditable, permanent.
+I built **Regenerative Compute**, an MCP (Model Context Protocol) server that connects AI coding assistants to the Regen Network — a public blockchain purpose-built for ecological credit issuance and retirement. Every retirement is an on-chain transaction: immutable, auditable, permanent.
 
 **Key design choice**: the footprint estimation is explicitly a heuristic. We don't claim to know your session's exact energy consumption — the variables (model size, data center location, energy mix, inference hardware) make per-session precision impossible. Instead, we provide an approximate estimate and frame the retirement as a "regenerative contribution," not a carbon offset. No neutrality claims. This is deliberate — it sidesteps the greenwashing critique entirely.
 
@@ -65,12 +65,12 @@ The credit inventory goes beyond carbon: biodiversity credits (Terrasos, Colombi
 
 **Install** (Claude Code):
 ```
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 Works with any MCP-compatible client (Cursor, Windsurf, etc.). No wallet or API keys needed — credit card purchases work out of the box. For on-chain users, direct wallet retirement and cross-chain payment (USDC on Base, ETH on Arbitrum, etc.) are supported.
 
-Open source (Apache-2.0): https://github.com/CShear/regen-for-ai
+Open source (Apache-2.0): https://github.com/CShear/regen-compute
 
 Paper references:
 - Luccioni, A.S. et al. (2023). "Power Hungry Processing: Watts Driving the Cost of AI Deployment?" — arXiv:2311.16863
@@ -90,10 +90,10 @@ Built an MCP that lets Claude estimate and offset its own ecological footprint
 
 ### Body
 
-I made an MCP server called **Regen for AI** that adds ecological accountability to Claude Code. One command to install:
+I made an MCP server called **Regenerative Compute** that adds ecological accountability to Claude Code. One command to install:
 
 ```
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 No API keys, no wallet, no config. It just works.
@@ -111,7 +111,7 @@ The footprint estimate is a heuristic (it's honest about being approximate), and
 
 You can pay with a credit card (no crypto needed), or if you're into that, configure a wallet for direct on-chain retirement or pay with USDC/ETH via cross-chain bridge.
 
-It's open source: https://github.com/CShear/regen-for-ai
+It's open source: https://github.com/CShear/regen-compute
 
 Would love to hear if anyone tries it out. Feedback welcome.
 
@@ -132,11 +132,11 @@ We built a tool that changes that. Thread:
 ### Tweet 2 (What it is)
 
 ```
-Regen for AI is an MCP server that connects your AI assistant (Claude Code, Cursor, etc.) to verified ecological credit retirement on @raboretum's Regen Network.
+Regenerative Compute is an MCP server that connects your AI assistant (Claude Code, Cursor, etc.) to verified ecological credit retirement on @raboretum's Regen Network.
 
 One command to install. No API keys. No wallet. No config.
 
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 ### Tweet 3 (How it works)
@@ -183,8 +183,8 @@ Credits available on Regen Network right now:
 ```
 Open source. Apache-2.0. TypeScript + Node.js.
 
-GitHub: github.com/CShear/regen-for-ai
-npm: npmjs.com/package/regen-for-ai
+GitHub: github.com/CShear/regen-compute
+npm: npmjs.com/package/regen-compute
 Blog: [BLOG_URL]
 
 Works with @AnthropicAI Claude Code, Cursor, Windsurf, or any MCP client.
@@ -226,16 +226,16 @@ Most "green AI" solutions fall into two buckets: corporate marketing claims with
 
 I built something different.
 
-## Regen for AI
+## Regenerative Compute
 
-[Regen for AI](https://github.com/CShear/regen-for-ai) is an MCP (Model Context Protocol) server that connects your AI assistant to verified ecological credit retirement on [Regen Network](https://regen.network).
+[Regenerative Compute](https://github.com/CShear/regen-compute) is an MCP (Model Context Protocol) server that connects your AI assistant to verified ecological credit retirement on [Regen Network](https://regen.network).
 
 **MCP** is an open protocol that lets AI assistants call external tools. If you use Claude Code, Cursor, Windsurf, or any MCP-compatible client, you can install this with one command.
 
 ### Install (Claude Code)
 
 ```bash
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 ### Install (Cursor / Windsurf / other MCP clients)
@@ -245,10 +245,10 @@ Add to your MCP config:
 ```json
 {
   "mcpServers": {
-    "regen-for-ai": {
+    "regen-compute": {
       "type": "stdio",
       "command": "npx",
-      "args": ["regen-for-ai"]
+      "args": ["regen-compute"]
     }
   }
 }
@@ -282,16 +282,16 @@ No greenwashing. Just verified contribution.
 ## Get Started
 
 ```bash
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 Then ask: *"What's the ecological footprint of this session?"*
 
-- **GitHub**: [github.com/CShear/regen-for-ai](https://github.com/CShear/regen-for-ai)
-- **npm**: [npmjs.com/package/regen-for-ai](https://www.npmjs.com/package/regen-for-ai)
+- **GitHub**: [github.com/CShear/regen-compute](https://github.com/CShear/regen-compute)
+- **npm**: [npmjs.com/package/regen-compute](https://www.npmjs.com/package/regen-compute)
 - **License**: Apache-2.0
 
-Open source contributions welcome. Check the [issues](https://github.com/CShear/regen-for-ai/issues) for open tasks.
+Open source contributions welcome. Check the [issues](https://github.com/CShear/regen-compute/issues) for open tasks.
 
 ---
 
@@ -299,18 +299,18 @@ Open source contributions welcome. Check the [issues](https://github.com/CShear/
 
 ### Message
 
-Hey all — I built an MCP server called **Regen for AI** that adds ecological accountability to Claude Code.
+Hey all — I built an MCP server called **Regenerative Compute** that adds ecological accountability to Claude Code.
 
 Install:
 ```
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 It lets Claude estimate your session's ecological footprint, browse live ecological credits on Regen Network (carbon, biodiversity, marine, and more), retire them via credit card or on-chain, and get a verifiable retirement certificate.
 
 Every retirement is an on-chain transaction — permanent and auditable. No wallet or API keys needed to get started.
 
-Open source: https://github.com/CShear/regen-for-ai
+Open source: https://github.com/CShear/regen-compute
 
 Would appreciate any feedback if you try it out.
 
@@ -321,7 +321,7 @@ Would appreciate any feedback if you try it out.
 ### Post Title
 
 ```
-MCP Server: Ecological accountability for your AI sessions (Regen for AI)
+MCP Server: Ecological accountability for your AI sessions (Regenerative Compute)
 ```
 
 ### Body
@@ -333,10 +333,10 @@ I built an MCP server that works with Cursor to add ecological accountability to
 ```json
 {
   "mcpServers": {
-    "regen-for-ai": {
+    "regen-compute": {
       "type": "stdio",
       "command": "npx",
-      "args": ["regen-for-ai"]
+      "args": ["regen-compute"]
     }
   }
 }
@@ -358,8 +358,8 @@ Credits include carbon, biodiversity (Colombia), marine stewardship (Indonesia),
 
 This is framed as "regenerative contribution," not carbon offsetting — the footprint estimate is honestly labeled as a heuristic, and we don't make neutrality claims.
 
-- **GitHub**: https://github.com/CShear/regen-for-ai
-- **npm**: https://www.npmjs.com/package/regen-for-ai
+- **GitHub**: https://github.com/CShear/regen-compute
+- **npm**: https://www.npmjs.com/package/regen-compute
 - **License**: Apache-2.0
 
 Feedback welcome, especially on Cursor-specific UX.
@@ -371,20 +371,20 @@ Feedback welcome, especially on Cursor-specific UX.
 ### Post Title
 
 ```
-Regen for AI — A new demand engine for ecocredits via AI developers
+Regenerative Compute — A new demand engine for ecocredits via AI developers
 ```
 
 ### Body
 
 Hi Regen community,
 
-I built **Regen for AI** — an MCP (Model Context Protocol) server that connects AI coding assistants like Claude Code and Cursor directly to ecocredit retirement on Regen Ledger.
+I built **Regenerative Compute** — an MCP (Model Context Protocol) server that connects AI coding assistants like Claude Code and Cursor directly to ecocredit retirement on Regen Ledger.
 
 **Why this matters for the Regen ecosystem:**
 
 AI developers are a massive, untapped demand-side audience for ecocredits. There are millions of developers using AI coding assistants daily, and data center energy consumption is projected to hit 1,000 TWh/year by 2026. Many of these developers care about sustainability but have no way to act on it inside their workflow.
 
-Regen for AI puts ecocredit retirement one command away. Developers install the MCP, their AI assistant gains tools to estimate ecological footprint, browse live sell orders on Regen Marketplace, retire credits (via credit card or on-chain), and retrieve verifiable retirement certificates.
+Regenerative Compute puts ecocredit retirement one command away. Developers install the MCP, their AI assistant gains tools to estimate ecological footprint, browse live sell orders on Regen Marketplace, retire credits (via credit card or on-chain), and retrieve verifiable retirement certificates.
 
 **What this means for REGEN:**
 
@@ -394,14 +394,14 @@ The current marketplace has ~$2M+ in live inventory across carbon, BT (Terrasos 
 
 **Current status:**
 
-- v0.3.0 live on npm (`npx regen-for-ai`)
+- v0.3.0 live on npm (`npx regen-compute`)
 - 7 tools including cross-chain payment via ecoBridge (USDC on Base, ETH on Arbitrum, etc.)
 - Open source, Apache-2.0
 - Subscription tiers (automated monthly batch retirements) coming next
 
 **Links:**
-- GitHub: https://github.com/CShear/regen-for-ai
-- npm: https://www.npmjs.com/package/regen-for-ai
+- GitHub: https://github.com/CShear/regen-compute
+- npm: https://www.npmjs.com/package/regen-compute
 - Blog post: [BLOG_URL]
 
 Would love feedback from the community, especially on which credit classes resonate most with the AI developer audience and any ideas for expanding the supply side.

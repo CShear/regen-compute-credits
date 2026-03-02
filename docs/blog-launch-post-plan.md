@@ -1,4 +1,4 @@
-# Blog Post Plan: Regen for AI Launch
+# Blog Post Plan: Regenerative Compute Launch
 
 ## Target Platforms
 - dev.to, Medium, cross-posted to Hacker News / r/MachineLearning / Claude Discord
@@ -29,11 +29,11 @@ Secondary: Regen/Web3 community, AI ethics researchers, climate tech people.
 - "Green AI" solutions today are either marketing claims or rely on unverifiable RECs
 - The gap: there's no tool that lives *inside* your AI workflow and provides *verifiable* proof of ecological action
 
-### 2. Introducing Regen for AI (2-3 paragraphs)
+### 2. Introducing Regenerative Compute (2-3 paragraphs)
 - What it is: an MCP server that connects your AI assistant to verified ecological credit retirement on Regen Network
 - What it is NOT: carbon offsetting, neutrality claims, greenwashing
 - The framing: "Regenerative contribution" — your AI usage funds verified ecological regeneration with immutable on-chain proof
-- One command install: `claude mcp add -s user regen-for-ai -- npx regen-for-ai`
+- One command install: `claude mcp add -s user regen-compute -- npx regen-compute`
 
 ### 3. How It Works — The Workflow (show, don't just tell)
 - Step 1: `estimate_session_footprint` — see the ecological cost

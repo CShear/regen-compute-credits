@@ -1,4 +1,4 @@
-# Regen for AI — Demo Video Script
+# Regenerative Compute — Demo Video Script
 
 **Target length**: 60-90 seconds
 **Format**: Screen recording of Claude Code terminal
@@ -33,9 +33,9 @@
 
 ### Pre-Recording Checklist
 
-- [ ] Regen for AI MCP server is installed: `claude mcp add -s user regen-for-ai -- npx regen-for-ai`
+- [ ] Regenerative Compute MCP server is installed: `claude mcp add -s user regen-compute -- npx regen-compute`
 - [ ] Restart Claude Code after adding the MCP server so it loads
-- [ ] Run `npx regen-for-ai --version` to confirm it resolves (should print `0.3.0`)
+- [ ] Run `npx regen-compute --version` to confirm it resolves (should print `0.3.0`)
 - [ ] Close all other applications to avoid notification popups
 - [ ] Silence system notifications (macOS: Focus mode; Linux: DND)
 - [ ] Set terminal font to 18-20px
@@ -66,11 +66,11 @@
 
 **Option A** (type it live): Type in a fresh terminal:
 ```
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 Expected output:
 ```
-Added stdio MCP server regen-for-ai with command: npx regen-for-ai
+Added stdio MCP server regen-compute with command: npx regen-compute
 ```
 
 **Option B** (show it as text overlay only): Skip the terminal typing and just overlay the install command as large styled text in post-production. This saves time and looks cleaner.
@@ -293,13 +293,13 @@ One command to install.
 **Overlay below** (styled as a terminal command):
 
 ```bash
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 **Overlay below that** (smaller, as a link):
 
 ```
-github.com/CShear/regen-for-ai
+github.com/CShear/regen-compute
 ```
 
 **Action**: Fade to black or hold on the caption screen. No terminal interaction.
@@ -374,14 +374,14 @@ svg-term --in demo.cast --out demo.svg --window --width 80 --height 24
 ## YouTube Description
 
 ### Title
-**Regen for AI — Ecological accountability for AI coding in 60 seconds**
+**Regenerative Compute — Ecological accountability for AI coding in 60 seconds**
 
 ### Description
 ```
-Every AI session consumes energy. Regen for AI is an MCP server that lets your AI coding assistant estimate that footprint and retire verified ecocredits on Regen Network — with immutable on-chain proof.
+Every AI session consumes energy. Regenerative Compute is an MCP server that lets your AI coding assistant estimate that footprint and retire verified ecocredits on Regen Network — with immutable on-chain proof.
 
 One command to install:
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 
 What you get:
 - Estimate your AI session's ecological footprint (energy, CO2, cost)
@@ -393,8 +393,8 @@ This is regenerative contribution, not carbon offsetting. No neutrality claims. 
 
 Works with Claude Code, Cursor, Windsurf, VS Code (Copilot), JetBrains, Gemini CLI, and any MCP-compatible client.
 
-GitHub: https://github.com/CShear/regen-for-ai
-npm: https://www.npmjs.com/package/regen-for-ai
+GitHub: https://github.com/CShear/regen-compute
+npm: https://www.npmjs.com/package/regen-compute
 Regen Network: https://regen.network
 Regen Marketplace: https://app.regen.network
 
@@ -416,26 +416,26 @@ regen for ai, regenerative ai, mcp server, model context protocol, claude code, 
 ```
 Every AI session uses energy. Now your AI can fund ecological regeneration.
 
-Regen for AI: one MCP command to install. Estimate your footprint, browse carbon & biodiversity credits, retire them on-chain.
+Regenerative Compute: one MCP command to install. Estimate your footprint, browse carbon & biodiversity credits, retire them on-chain.
 
 Verifiable. Immutable. No crypto wallet needed.
 
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 
-github.com/CShear/regen-for-ai
+github.com/CShear/regen-compute
 ```
 
 **Alt shorter version** (280 chars):
 ```
 Your AI sessions have an ecological footprint. Now Claude can estimate it and retire verified ecocredits on Regen Network — with on-chain proof.
 
-One command: claude mcp add -s user regen-for-ai -- npx regen-for-ai
+One command: claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 ### LinkedIn
 
 ```
-Introducing Regen for AI — ecological accountability for AI compute.
+Introducing Regenerative Compute — ecological accountability for AI compute.
 
 Every AI coding session consumes energy. With one MCP install command, your AI assistant can:
 
@@ -448,9 +448,9 @@ This isn't carbon offsetting — it's regenerative contribution. Verified fundin
 
 Works with Claude Code, Cursor, VS Code, and any MCP-compatible AI tool.
 
-Install: claude mcp add -s user regen-for-ai -- npx regen-for-ai
+Install: claude mcp add -s user regen-compute -- npx regen-compute
 
-GitHub: https://github.com/CShear/regen-for-ai
+GitHub: https://github.com/CShear/regen-compute
 
 #RegenerativeAI #Sustainability #ClimTech #MCP #AItools
 ```

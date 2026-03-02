@@ -11,7 +11,7 @@
 
 A partnership proposal from Regen Network
 
-*Regen for AI — the first MCP server for ecological accountability in AI workflows*
+*Regenerative Compute — the first MCP server for ecological accountability in AI workflows*
 
 ---
 
@@ -40,14 +40,14 @@ The "green AI" landscape today:
 
 ---
 
-## Slide 3 — The Solution: Regen for AI
+## Slide 3 — The Solution: Regenerative Compute
 
-**Regen for AI is an MCP server that connects Claude to verified ecological credit retirement on Regen Network.** It is live on npm today (v0.3.0) and works with Claude Code right now.
+**Regenerative Compute is an MCP server that connects Claude to verified ecological credit retirement on Regen Network.** It is live on npm today (v0.3.0) and works with Claude Code right now.
 
 One command to install:
 
 ```bash
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 No API keys. No wallet. No configuration required. It works immediately.
@@ -81,7 +81,7 @@ The workflow has four steps, all inside Claude:
 ### Step 1 — Install
 
 ```bash
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 One command. Zero configuration. Works immediately.
@@ -130,7 +130,7 @@ This is ecological regeneration — not just carbon accounting.
 
 ### What is live today
 
-- **npm v0.3.0 published** — installable via `npx regen-for-ai`
+- **npm v0.3.0 published** — installable via `npx regen-compute`
 - **[PLACEHOLDER]** npm downloads to date
 - **[PLACEHOLDER]** on-chain retirements executed through the MCP
 - **End-to-end cross-chain retirement proven** — Base USDC to Regen Ledger retirement, verified on-chain
@@ -158,11 +158,11 @@ This is ecological regeneration — not just carbon accounting.
 
 ## Slide 6 — The Ask: Three Partnership Tiers
 
-### Tier 1 — Feature Regen for AI in Claude's MCP Ecosystem
+### Tier 1 — Feature Regenerative Compute in Claude's MCP Ecosystem
 
 **Anthropic effort: Near zero.**
 
-- List Regen for AI in Claude's recommended MCP servers / connector marketplace
+- List Regenerative Compute in Claude's recommended MCP servers / connector marketplace
 - Include in "featured" or "sustainability" category
 - Optional: mention in a blog post or changelog
 
@@ -177,8 +177,8 @@ This is ecological regeneration — not just carbon accounting.
 **Anthropic effort: Settings UI + MCP auto-configuration.**
 
 - Add a "Regenerative AI" toggle in Claude Pro/Team account settings
-- When enabled, Claude auto-configures the Regen for AI MCP and periodically surfaces footprint estimates and retirement opportunities
-- Optional subscription upsell: "Add ecological accountability for $2-$10/month"
+- When enabled, Claude auto-configures the Regenerative Compute MCP and periodically surfaces footprint estimates and retirement opportunities
+- Optional subscription upsell: "Add ecological accountability for $2.50-$15/month"
 - Revenue share on subscription tier revenue
 
 **What Anthropic gets**: A differentiated product feature no competitor has. Recurring sustainability-linked revenue. A defensible answer to "what is Anthropic doing about AI's environmental footprint?"
@@ -212,23 +212,23 @@ Each tier escalates Anthropic's commitment — and their defensibility in the "R
 
 | Tier | Price | Credits/month | AI sessions covered |
 |------|-------|---------------|---------------------|
-| Seedling | $2/mo | ~0.5 carbon | ~30–50 |
-| Grove | $5/mo | ~1.25 carbon | ~80–125 |
-| Forest | $10/mo | ~2.5 carbon | ~160–250 |
+| Seedling | $2.50/mo | ~0.5 carbon | ~30–50 |
+| Grove | $7/mo | ~1.5 carbon | ~80–125 |
+| Forest | $15/mo | ~3 carbon | ~160–250 |
 
 ### Revenue allocation
 
 | Allocation | Percentage | Purpose |
 |------------|-----------|---------|
 | Credit purchases | 85% | Funds verified ecological regeneration |
-| REGEN buy-and-burn | 10% | Protocol-level value accrual |
-| Operations | 5% | Service maintenance, support |
+| REGEN buy-and-burn | 5% | Protocol-level value accrual |
+| Operations | 10% | Service maintenance, support, Stripe fees |
 
 ### Market sizing
 
 - Claude has millions of active users ([PLACEHOLDER] for exact subscriber count)
-- At 1% conversion to Seedling ($2/mo): [PLACEHOLDER] subscribers = [PLACEHOLDER] MRR
-- At 0.5% conversion to Grove ($5/mo): [PLACEHOLDER] subscribers = [PLACEHOLDER] MRR
+- At 1% conversion to Seedling ($2.50/mo): [PLACEHOLDER] subscribers = [PLACEHOLDER] MRR
+- At 0.5% conversion to Grove ($7/mo): [PLACEHOLDER] subscribers = [PLACEHOLDER] MRR
 - Enterprise API customers represent much higher per-account value ($500–$5,000/mo depending on API spend)
 
 ### Revenue share opportunity
@@ -248,7 +248,7 @@ Anthropic revenue share is negotiable across all tiers:
 
 ### The MCP ecosystem is defining its categories
 
-MCP is early. The servers that become "default" now will be default forever. Regen for AI is the only ecological accountability MCP in existence. Featuring it now costs Anthropic nothing and claims the category.
+MCP is early. The servers that become "default" now will be default forever. Regenerative Compute is the only ecological accountability MCP in existence. Featuring it now costs Anthropic nothing and claims the category.
 
 ### "Regenerative AI" is unclaimed
 
@@ -268,7 +268,7 @@ If Cursor, OpenAI, or Google adds ecological features to their AI platforms firs
 
 ### The product is live today
 
-This is not a proposal for future work. Regen for AI is published on npm, works with Claude Code, and has executed real on-chain retirements. The ask is partnership around a working product — not investment in a concept.
+This is not a proposal for future work. Regenerative Compute is published on npm, works with Claude Code, and has executed real on-chain retirements. The ask is partnership around a working product — not investment in a concept.
 
 ### Credit supply is ready
 
@@ -300,23 +300,23 @@ Regen Network has been building purpose-built infrastructure for ecological cred
 
 - **[PLACEHOLDER]**: Name, title
 - **Email**: [PLACEHOLDER]
-- **GitHub**: [github.com/CShear/regen-for-ai](https://github.com/CShear/regen-for-ai)
-- **npm**: [npmjs.com/package/regen-for-ai](https://www.npmjs.com/package/regen-for-ai)
+- **GitHub**: [github.com/CShear/regen-compute](https://github.com/CShear/regen-compute)
+- **npm**: [npmjs.com/package/regen-compute](https://www.npmjs.com/package/regen-compute)
 - **Regen Network**: [regen.network](https://regen.network)
 
 ---
 
 ---
 
-# One-Page Partnership Overview: Regen for AI x Anthropic
+# One-Page Partnership Overview: Regenerative Compute x Anthropic
 
 ## What It Is
 
-Regen for AI is a live MCP server (npm v0.3.0) that adds verified ecological accountability to Claude. Users estimate their AI session's footprint, browse ecological credits on Regen Network, retire them on-chain, and receive a permanent, shareable certificate — all without leaving Claude.
+Regenerative Compute is a live MCP server (npm v0.3.0) that adds verified ecological accountability to Claude. Users estimate their AI session's footprint, browse ecological credits on Regen Network, retire them on-chain, and receive a permanent, shareable certificate — all without leaving Claude.
 
 ## The Opportunity
 
-**Own "Regenerative AI" before anyone else does.** No AI platform has verified, on-chain ecological accountability. The first to integrate it defines the category. Regen for AI is built, tested, and working with Claude Code today.
+**Own "Regenerative AI" before anyone else does.** No AI platform has verified, on-chain ecological accountability. The first to integrate it defines the category. Regenerative Compute is built, tested, and working with Claude Code today.
 
 ## What Already Works
 
@@ -334,7 +334,7 @@ Regen for AI is a live MCP server (npm v0.3.0) that adds verified ecological acc
 
 ## Revenue Potential
 
-- Subscription tiers: $2–$10/month per user (85% goes to credit purchases, revenue share negotiable)
+- Subscription tiers: $2.50–$15/month per user (85% goes to credit purchases, revenue share negotiable)
 - Enterprise: Custom pricing based on API spend (higher per-account value)
 - At 1% Claude Pro conversion: significant recurring revenue with zero marginal cost to Anthropic
 

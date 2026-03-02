@@ -1,7 +1,7 @@
 # Verified Ecological Accountability for Enterprise AI
 
 > **On-chain proof. Real projects. Zero greenwashing risk.**
-> Regen for AI — Enterprise Sales Deck
+> Regenerative Compute — Enterprise Sales Deck
 > March 2026
 
 ---
@@ -12,7 +12,7 @@
 
 On-chain proof. Real projects. Zero greenwashing risk.
 
-*Regen for AI — powered by Regen Network*
+*Regenerative Compute — powered by Regen Network*
 
 ---
 
@@ -46,9 +46,9 @@ Most enterprise "green AI" initiatives rely on:
 
 ---
 
-## Slide 3 — The Solution: Regen for AI
+## Slide 3 — The Solution: Regenerative Compute
 
-Regen for AI connects your enterprise AI usage to verified ecological credit retirement on Regen Network — a public blockchain purpose-built for ecological assets.
+Regenerative Compute connects your enterprise AI usage to verified ecological credit retirement on Regen Network — a public blockchain purpose-built for ecological assets.
 
 **What makes it different:**
 
@@ -73,7 +73,7 @@ Regen for AI connects your enterprise AI usage to verified ecological credit ret
 Install in your team's AI coding environment with a single command:
 
 ```bash
-claude mcp add -s user regen-for-ai -- npx regen-for-ai
+claude mcp add -s user regen-compute -- npx regen-compute
 ```
 
 Zero configuration. Developers can immediately estimate session footprints, browse credits, and retire via credit card or on-chain wallet. Works with Claude Code, Cursor, VS Code, Windsurf, JetBrains, and any MCP-compatible client.
@@ -102,7 +102,7 @@ Your AI Infrastructure (API calls, sessions, compute hours)
     |
     | Usage metrics
     v
-Regen for AI Service
+Regenerative Compute Service
     |
     |-- Estimate footprint (heuristic, labeled as approximate)
     |-- Select credits (by type, geography, project preference)
@@ -201,7 +201,7 @@ Projects across **9+ countries**: United States, Kenya, Peru, Indonesia, Democra
 
 Enterprise ESG reports are under increasing scrutiny. Vague sustainability claims are liabilities. Regulators, auditors, and shareholders demand specificity and verifiability.
 
-### What Regen for AI provides for your ESG reporting
+### What Regenerative Compute provides for your ESG reporting
 
 **Automated monthly impact reports** containing:
 - Total credits retired (by type, project, and geography)
@@ -218,7 +218,7 @@ Every word of this statement is factual and on-chain verifiable. No qualificatio
 
 ### Alignment with reporting frameworks
 
-| Framework | How Regen for AI supports it |
+| Framework | How Regenerative Compute supports it |
 |-----------|------------------------------|
 | **GRI Standards** | On-chain data feeds directly into GRI 305 (Emissions) and GRI 304 (Biodiversity) disclosures |
 | **CDP** | Verifiable credit retirement data for CDP climate and forests questionnaires |
@@ -236,7 +236,7 @@ Every retirement certificate has a permanent, shareable URL. Embed these directl
 
 ### Product readiness
 
-- **npm v0.3.0** published and installable today via `npx regen-for-ai`
+- **npm v0.3.0** published and installable today via `npx regen-compute`
 - **8-platform support**: Claude Code, Cursor, VS Code, Windsurf, JetBrains, Gemini CLI, and any MCP-compatible client
 - **End-to-end cross-chain retirement proven**: USDC on Base -> ecoBridge -> Regen Ledger retirement (verified on-chain)
 - **Open source** under Apache-2.0 — your security team can audit every line
@@ -265,11 +265,11 @@ Every retirement certificate has a permanent, shareable URL. Embed these directl
 
 **[PLACEHOLDER] — Case Study 1**
 
-> [Company Name], a [industry] company with [X] monthly Claude API calls, integrated Regen for AI in [month]. Over [X] months, they retired [X] ecological credits across [X] projects in [X] countries. Their Q[X] sustainability report cited on-chain retirement certificates as evidence of ecological contribution — the first time their ESG disclosures referenced independently verifiable, blockchain-based proof.
+> [Company Name], a [industry] company with [X] monthly Claude API calls, integrated Regenerative Compute in [month]. Over [X] months, they retired [X] ecological credits across [X] projects in [X] countries. Their Q[X] sustainability report cited on-chain retirement certificates as evidence of ecological contribution — the first time their ESG disclosures referenced independently verifiable, blockchain-based proof.
 
 **[PLACEHOLDER] — Case Study 2**
 
-> [Company Name], a developer tools company, deployed Regen for AI across their engineering team of [X] developers. Monthly ecological contribution became part of their team culture. [X] individual retirement certificates were shared on social media, generating [X] impressions and direct inquiries from [X] prospective customers about their sustainability practices.
+> [Company Name], a developer tools company, deployed Regenerative Compute across their engineering team of [X] developers. Monthly ecological contribution became part of their team culture. [X] individual retirement certificates were shared on social media, generating [X] impressions and direct inquiries from [X] prospective customers about their sustainability practices.
 
 ---
 
@@ -338,14 +338,14 @@ All pricing includes the full service — there are no hidden fees for retiremen
 ┌─────────┼──────────────────┼───────────────────┼────────┐
 │         v                  v                   v        │
 │  ┌─────────────────────────────────────────────────┐    │
-│  │           Regen for AI Service                   │    │
+│  │           Regenerative Compute Service                   │    │
 │  │                                                  │    │
 │  │  Footprint Estimation    Credit Selection        │    │
 │  │  Order Routing           Retirement Execution    │    │
 │  │  Certificate Generation  Impact Reporting        │    │
 │  └──────────────────────┬───────────────────────────┘    │
 │                         │                                │
-│         Regen for AI    │                                │
+│         Regenerative Compute    │                                │
 └─────────────────────────┼────────────────────────────────┘
                           │
                           v
@@ -444,8 +444,8 @@ We scope every enterprise engagement to your AI usage profile, ecological contri
 
 ### Resources
 
-- **GitHub**: [github.com/CShear/regen-for-ai](https://github.com/CShear/regen-for-ai) (open source, Apache-2.0)
-- **npm**: [npmjs.com/package/regen-for-ai](https://www.npmjs.com/package/regen-for-ai)
+- **GitHub**: [github.com/CShear/regen-compute](https://github.com/CShear/regen-compute) (open source, Apache-2.0)
+- **npm**: [npmjs.com/package/regen-compute](https://www.npmjs.com/package/regen-compute)
 - **Regen Network**: [regen.network](https://regen.network)
 - **Regen Marketplace**: [app.regen.network](https://app.regen.network)
 - **API Documentation**: [PLACEHOLDER]
@@ -456,4 +456,4 @@ We scope every enterprise engagement to your AI usage profile, ecological contri
 
 ---
 
-*Regen for AI is published on [npm](https://www.npmjs.com/package/regen-for-ai) as v0.3.0. Powered by [Regen Network](https://regen.network). Licensed Apache-2.0.*
+*Regenerative Compute is published on [npm](https://www.npmjs.com/package/regen-compute) as v0.3.0. Powered by [Regen Network](https://regen.network). Licensed Apache-2.0.*

@@ -55,15 +55,15 @@ The MCP pattern is architecturally elegant because it works natively with Claude
 
 ### Layer 2 — The Aggregation Pool (Financial Vehicle)
 
-The subscription model ($1/$3/$5 per month) is psychologically well-designed. At $20/month for Claude Pro, an additional $2-3 for "Regenerative AI" is below the threshold of meaningful financial friction. The aggregation approach is correct: individual per-query costs are negligible, but pooled monthly they become meaningful.
+The subscription model ($2.50/$7/$15 per month) is psychologically well-designed. At $20/month for Claude Pro, an additional $2.50-$7 for "Regenerative AI" is below the threshold of meaningful financial friction. The aggregation approach is correct: individual per-query costs are negligible, but pooled monthly they become meaningful.
 
 The financial math at the proposal's numbers:
 
-| Cohort Size | Monthly Revenue | Credit Purchases (~88%) | REGEN Buy-and-Burn (~10%) | Operating Margin (~2%) |
+| Cohort Size | Monthly Revenue | Credit Purchases (~85%) | REGEN Buy-and-Burn (~5%) | Operating Margin (~10%) |
 |---|---|---|---|---|
-| 10,000 users @ $2/mo | $20,000 | $17,600 | $2,000 | $400 |
-| 50,000 users @ $2/mo | $100,000 | $88,000 | $10,000 | $2,000 |
-| 500,000 users @ $2/mo | $1,000,000 | $880,000 | $100,000 | $20,000 |
+| 10,000 users @ $2.50/mo | $25,000 | $21,250 | $1,250 | $2,500 |
+| 50,000 users @ $2.50/mo | $125,000 | $106,250 | $6,250 | $12,500 |
+| 500,000 users @ $2.50/mo | $1,250,000 | $1,062,500 | $62,500 | $125,000 |
 
 At current marketplace prices, $17,600/month buys roughly 440 carbon credits or 677 biodiversity credits. That's a meaningful monthly retirement volume — roughly double the recent on-chain retirement rate. At the 50K user tier, $88K/month would exhaust current carbon inventory in under a month, which means credit supply development becomes the binding constraint (more on this below).
 
@@ -77,7 +77,7 @@ The proposal correctly identifies this as the real prize. A per-API-call ecologi
 
 ### 4a. Credit Supply Is the Binding Constraint
 
-With ~2,000 carbon credits and ~80,000 biodiversity credits currently listed, total marketplace inventory is ~$2.16M. A successful 50K-user subscription service at $2/month would channel ~$88K/month into credit purchases, exhausting the carbon supply in roughly one month and the biodiversity supply in about two years (assuming no replenishment).
+With ~2,000 carbon credits and ~80,000 biodiversity credits currently listed, total marketplace inventory is ~$2.16M. A successful 50K-user subscription service at $2.50/month would channel ~$106K/month into credit purchases, exhausting the carbon supply in roughly one month and the biodiversity supply in about two years (assuming no replenishment).
 
 This is simultaneously the biggest risk and the most powerful signal. If the Regen Agent generates enough demand to exhaust supply, it proves the model works and creates strong incentive for project developers to list more credits. The proposal correctly identifies that Regen needs to actively recruit methodologies suited to high-frequency, small-denomination retirement — soil carbon, biochar, and regenerative agriculture credits with shorter vintage windows. This supply-side development is a 6-12+ month effort and should begin in parallel with product development, not after.
 
@@ -192,7 +192,7 @@ The proposal occasionally implies carbon offset equivalence. This is a liability
 
 ### 7b. Start with Both Carbon and Biodiversity Credits
 
-The proposal focuses on carbon. With 80,000 biodiversity credits at ~$26 each (~$2.08M), Regen's biodiversity inventory is actually the deeper pool. A $2/month subscription at scale should purchase a mix of carbon and biodiversity credits. This is narratively stronger ("ecological regeneration" not just "carbon offset"), provides more supply runway, and differentiates from pure carbon offset competitors.
+The proposal focuses on carbon. With 80,000 biodiversity credits at ~$26 each (~$2.08M), Regen's biodiversity inventory is actually the deeper pool. A $2.50/month subscription at scale should purchase a mix of carbon and biodiversity credits. This is narratively stronger ("ecological regeneration" not just "carbon offset"), provides more supply runway, and differentiates from pure carbon offset competitors.
 
 ### 7c. Build the Certificate Page Before Anything Else
 

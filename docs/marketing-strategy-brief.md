@@ -1,8 +1,8 @@
-# Regen for AI — Marketing & Communications Strategy Brief
+# Regenerative Compute — Marketing & Communications Strategy Brief
 
 > **Prepared for**: Marketing & Communications Lead
 > **Date**: March 1, 2026
-> **Product**: Regen for AI (MCP server for ecological accountability in AI workflows)
+> **Product**: Regenerative Compute (MCP server for ecological accountability in AI workflows)
 > **Category**: Regenerative AI
 > **Status**: Product built and live on npm (v0.3.0). Content assets drafted. Ready for launch execution.
 
@@ -10,7 +10,7 @@
 
 ## 1. What This Product Is (30-Second Version)
 
-Regen for AI is a plugin for AI coding assistants (Claude Code, Cursor, VS Code, etc.) that lets developers estimate their AI session's ecological footprint and fund verified ecological regeneration with on-chain proof. It connects to Regen Network, a public blockchain for ecological credits. Users never need crypto knowledge — credit card purchases work out of the box.
+Regenerative Compute is a plugin for AI coding assistants (Claude Code, Cursor, VS Code, etc.) that lets developers estimate their AI session's ecological footprint and fund verified ecological regeneration with on-chain proof. It connects to Regen Network, a public blockchain for ecological credits. Users never need crypto knowledge — credit card purchases work out of the box.
 
 **One-liner for external use**: "Fund verified ecological regeneration from your AI sessions — one command to install, on-chain proof of every retirement."
 
@@ -181,17 +181,17 @@ The launch should be sequenced to build momentum, not shotgunned all at once. Ea
 
 **Problem**: "AI coding assistants consume real energy. Data centers are projected to hit 1,000 TWh/year by 2026. Most developers know this but can't act on it from inside their workflow."
 
-**Solution**: "Regen for AI adds ecological accountability to your AI assistant. One command to install. Estimate your footprint, browse credits, retire them, get a verifiable certificate. All without leaving your workflow."
+**Solution**: "Regenerative Compute adds ecological accountability to your AI assistant. One command to install. Estimate your footprint, browse credits, retire them, get a verifiable certificate. All without leaving your workflow."
 
 **Differentiator**: "Every retirement is on a public blockchain — not a private database, not a marketing dashboard. Anyone can verify it. That's what makes this different from every 'green AI' claim you've seen."
 
-**CTA**: "Install it: `claude mcp add -s user regen-for-ai -- npx regen-for-ai`"
+**CTA**: "Install it: `claude mcp add -s user regen-compute -- npx regen-compute`"
 
 ### For the Regen Ecosystem
 
 **Value**: "AI developers become a new demand engine for ecocredits. Outside capital flows in from people who would never have found Regen Network otherwise."
 
-**Mechanism**: "Every retirement is a real MsgBuyDirect on Regen Ledger. Subscription tiers (coming soon) automate monthly batch retirements. 10% of subscription revenue goes to REGEN buy-and-burn."
+**Mechanism**: "Every retirement is a real MsgBuyDirect on Regen Ledger. Subscription tiers (coming soon) automate monthly batch retirements. 5% of subscription revenue goes to REGEN buy-and-burn."
 
 **CTA**: "Spread the word. Every MCP install is a potential recurring credit buyer."
 
@@ -245,7 +245,7 @@ These are short excerpts from the existing drafts. Use them to calibrate the voi
 
 ### Regen Community (ecosystem-value framing)
 
-> AI developers are a massive, untapped demand-side audience for ecocredits. There are millions of developers using AI coding assistants daily. Many of these developers care about sustainability but have no way to act on it inside their workflow. Regen for AI puts ecocredit retirement one command away.
+> AI developers are a massive, untapped demand-side audience for ecocredits. There are millions of developers using AI coding assistants daily. Many of these developers care about sustainability but have no way to act on it inside their workflow. Regenerative Compute puts ecocredit retirement one command away.
 
 ---
 
@@ -318,7 +318,7 @@ These are short excerpts from the existing drafts. Use them to calibrate the voi
 | Certificate page (live) | The viral mechanic — needs to look great for sharing |
 | Monthly impact emails (built) | Template needs brand review; currently functional but plain |
 | 8-platform install docs (README) | Can reference in content: "Works with Claude, Cursor, VS Code, Windsurf, JetBrains, Gemini CLI..." |
-| Developer REST API with OpenAPI spec | Enables "Build on Regen for AI" developer marketing angle |
+| Developer REST API with OpenAPI spec | Enables "Build on Regenerative Compute" developer marketing angle |
 | REGEN buy-and-burn mechanism | Narrative fuel for ecosystem community: "Every subscription burns REGEN tokens" |
 
 ---

@@ -1,8 +1,8 @@
-# Regen for AI — Outreach Research
+# Regenerative Compute — Outreach Research
 
 > **Date**: March 1, 2026
 > **Covers**: GitHub Issues #27 (AI Platform Outreach), #26 (Conferences & Podcasts), #16 (Carbon API Aggregators)
-> **Product**: Regen for AI — MCP server for ecological accountability in AI workflows
+> **Product**: Regenerative Compute — MCP server for ecological accountability in AI workflows
 > **Status**: Research complete. Ready for outreach execution.
 
 ---
@@ -16,11 +16,11 @@
 | Attribute | Detail |
 |-----------|--------|
 | **Integration path** | MCP (native). Copilot Chat supports local and remote MCP servers across VS Code, JetBrains, Xcode, and Copilot CLI (GA Feb 25, 2026). |
-| **Technical requirements** | stdio MCP server (already supported by `regen-for-ai`). Remote MCP via Streamable HTTP also supported. |
+| **Technical requirements** | stdio MCP server (already supported by `regen-compute`). Remote MCP via Streamable HTTP also supported. |
 | **User base** | 30M+ developers. Largest AI coding assistant by install base. |
 | **Values alignment** | Medium. GitHub has sustainability messaging but no ecological accountability features. |
 | **Ease of integration** | HIGH — MCP already works. User adds server config to `.vscode/mcp.json` or global settings. Already documented in our README. |
-| **Discovery** | GitHub MCP Registry — curated list of MCP servers. Listing `regen-for-ai` here would be a major distribution win. |
+| **Discovery** | GitHub MCP Registry — curated list of MCP servers. Listing `regen-compute` here would be a major distribution win. |
 | **Contact path** | Submit to GitHub MCP Registry. Copilot extensions team via GitHub partnerships. |
 | **Outreach priority** | **P0** — Registry listing is the single highest-leverage distribution action. |
 
@@ -57,7 +57,7 @@
 | **Technical requirements** | Supports stdio, Streamable HTTP, SSE, and OAuth. 21+ third-party tools already integrated. |
 | **User base** | Growing rapidly. AI-native developer audience — exactly our target. |
 | **Values alignment** | Medium. Developer-focused, innovation-oriented. |
-| **Ease of integration** | HIGHEST — MCP Marketplace enables one-click install. Submit `regen-for-ai` to Marketplace. |
+| **Ease of integration** | HIGHEST — MCP Marketplace enables one-click install. Submit `regen-compute` to Marketplace. |
 | **Contact path** | Windsurf MCP Marketplace submission. Already documented in our README. |
 | **Outreach priority** | **P1** — Marketplace listing is low-effort, high-distribution. |
 
@@ -127,13 +127,13 @@
 
 #### Template 1: MCP-Native Platforms (Copilot, Q Developer, Windsurf, Cody)
 
-> **Subject**: Regen for AI — Ecological accountability MCP server for [Platform Name]
+> **Subject**: Regenerative Compute — Ecological accountability MCP server for [Platform Name]
 >
 > Hi [Name/Team],
 >
-> I built Regen for AI, an MCP server that adds ecological accountability to AI coding workflows. It lets developers estimate their AI session's footprint and retire verified ecological credits on Regen Network — with on-chain proof of every retirement.
+> I built Regenerative Compute, an MCP server that adds ecological accountability to AI coding workflows. It lets developers estimate their AI session's footprint and retire verified ecological credits on Regen Network — with on-chain proof of every retirement.
 >
-> It already works with [Platform Name] via MCP (stdio transport). The npm package is live: `npx regen-for-ai`.
+> It already works with [Platform Name] via MCP (stdio transport). The npm package is live: `npx regen-compute`.
 >
 > I'd love to get it listed in [Platform's MCP registry/marketplace] so developers can discover it easily. Key stats:
 >
@@ -141,7 +141,7 @@
 > - ~$2M+ in live ecological credits (carbon, biodiversity, marine, grazing)
 > - On-chain verification on Regen Network — immutable, auditable, public
 > - Credit card purchases work out of the box (no crypto knowledge needed)
-> - Open source: github.com/CShear/regen-for-ai
+> - Open source: github.com/CShear/regen-compute
 >
 > Would you be open to a quick call, or should I submit through [standard submission process]?
 >
@@ -154,7 +154,7 @@
 >
 > Hi [Name/Team],
 >
-> I'm building Regen for AI, a tool that connects AI compute usage to verified ecological credit retirement. It's live as an MCP server (works with Claude Code, Cursor, Copilot, etc.) and I'm expanding to support HTTP-based integrations.
+> I'm building Regenerative Compute, a tool that connects AI compute usage to verified ecological credit retirement. It's live as an MCP server (works with Claude Code, Cursor, Copilot, etc.) and I'm expanding to support HTTP-based integrations.
 >
 > For [Platform Name], I'd like to create a [GPT Action / Gemini Extension] that lets users:
 >
@@ -388,7 +388,7 @@
 
 AI coding assistants consume real energy. Data centers are projected to hit 1,000 TWh annually by 2026 — roughly the electricity demand of Japan. Most developers know this. Almost none can act on it from inside their workflow.
 
-Regen for AI changes that. It is an MCP (Model Context Protocol) server that connects AI compute to verified ecological credit retirement on Regen Network, a public blockchain for ecological assets. Developers install it with one command. From inside their AI assistant, they can estimate their session's footprint, browse credits spanning carbon, biodiversity, marine stewardship, and grazing, and retire them with immutable on-chain proof.
+Regenerative Compute changes that. It is an MCP (Model Context Protocol) server that connects AI compute to verified ecological credit retirement on Regen Network, a public blockchain for ecological assets. Developers install it with one command. From inside their AI assistant, they can estimate their session's footprint, browse credits spanning carbon, biodiversity, marine stewardship, and grazing, and retire them with immutable on-chain proof.
 
 This is not "carbon offsetting." We call it regenerative contribution — funding verified ecological regeneration with a transaction hash anyone can verify. The footprint estimate is a heuristic, and we say so. That honesty is the point.
 
@@ -437,7 +437,7 @@ We will demo the full workflow live: install, estimate, browse, retire, verify.
 | **Supplier onboarding** | Partner model — works with "third-party carbon offset developers or registries." Uses "Project bundles" concept to group similar projects. |
 | **Can Regen credits be listed?** | LIKELY — Regen Network as a registry is a natural fit for Lune's partner model. Project bundles could group Regen's multi-credit portfolio (carbon + biodiversity + marine). |
 | **Contact** | General inquiry via lune.co. No explicit supplier email found. |
-| **Key differentiator for pitch** | Lune's Client Accounts system (per-customer attribution) maps directly to Regen for AI's per-subscriber retirement model. Technical architecture alignment. |
+| **Key differentiator for pitch** | Lune's Client Accounts system (per-customer attribution) maps directly to Regenerative Compute's per-subscriber retirement model. Technical architecture alignment. |
 | **Priority** | **HIGH** — good technical fit, registry partnership model |
 
 ### Aggregator Comparison
@@ -473,7 +473,7 @@ We will demo the full workflow live: install, estimate, browse, retire, verify.
 >
 > 3. **Live marketplace inventory.** ~83,000 credits from 9+ countries, priced $3.95-$45/credit. Real sell orders, not indicative pricing.
 >
-> 4. **New demand channel.** We've built Regen for AI, an MCP server that connects AI coding assistants to credit retirement. This creates a net-new buyer segment — AI developers — purchasing credits through their existing workflow. This demand channel is additive to [Platform Name]'s existing buyer base.
+> 4. **New demand channel.** We've built Regenerative Compute, an MCP server that connects AI coding assistants to credit retirement. This creates a net-new buyer segment — AI developers — purchasing credits through their existing workflow. This demand channel is additive to [Platform Name]'s existing buyer base.
 >
 > 5. **Fiat rails.** Credit card purchases work today via Regen Marketplace. No crypto knowledge needed. Cross-chain crypto payments also supported via ecoBridge (USDC on Base, Ethereum, Polygon, etc.).
 >
@@ -489,8 +489,8 @@ We will demo the full workflow live: install, estimate, browse, retire, verify.
 >
 > Best,
 > [Name]
-> Regen Network / Regen for AI
-> github.com/CShear/regen-for-ai
+> Regen Network / Regenerative Compute
+> github.com/CShear/regen-compute
 
 ### Recommended Outreach Sequence for Carbon APIs
 
